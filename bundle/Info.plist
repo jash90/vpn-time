@@ -16,6 +16,8 @@
     <string>vpntime</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>VPN Time zamyka Tunnelblicka o ustawionej godzinie końca pracy.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

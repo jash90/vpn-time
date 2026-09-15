@@ -18,6 +18,11 @@ działającej instalacji na **innej maszynie** (użytkownik `redge`):
 możliwości ponownego zrzutu — ten dokument cytuje plan odtworzeniowy
 (`docs/superpowers/plans/2026-09-15-vpn-time-recreate.md`), a nie binarkę.
 
+> **Uwaga o aktualności (2026-09-15):** poniższy zrzut menu opisuje **oryginał**.
+> Działająca apka ma o jedną pozycję więcej — `Koniec pracy: …` zaraz po
+> `Uruchamiaj przy logowaniu` — dodaną na życzenie użytkownika już po
+> odtworzeniu. Pozycje 1–9 pozostają bez zmian.
+
 ---
 
 ## Odzyskana specyfikacja (źródło prawdy dla parytetu)

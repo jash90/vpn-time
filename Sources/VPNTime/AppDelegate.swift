@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = VPNStore()
     private let calendar = Calendar.vpnTimeISO
     private let agentLabel = "com.redge.vpntimebar"
+    private let workdayEndKey = "workdayEndMinutes"
+    private let workdayEndLastFiredKey = "workdayEndLastFired"
     private var timer: Timer?
 
     private var agentPath: String {
@@ -43,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         rebuildMenu(sessions: sessions, active: active)
+        endWorkdayIfDue(active: active)
     }
 
     private func rebuildMenu(sessions: [Session], active: (Date, String)?) {
@@ -72,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autostart.target = self
         autostart.state = autostartEnabled() ? .on : .off
         menu.addItem(autostart)
+        menu.addItem(workdayEndItem())
 
         menu.addItem(.separator())
         menu.addItem(action("Pokaż plik z historią", #selector(revealCSV)))
@@ -80,6 +84,138 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(action("Zakończ", #selector(quit)))
 
         statusItem.menu = menu
+    }
+
+    private var workdayEnd: WorkdayEnd? {
+        guard let minutes = UserDefaults.standard.object(forKey: workdayEndKey) as? Int else {
+            return nil
+        }
+
+        return WorkdayEnd(minutesOfDay: minutes)
+    }
+
+    private func workdayEndItem() -> NSMenuItem {
+        let current = workdayEnd
+        let item = NSMenuItem(
+            title: "Koniec pracy: " + (current?.label ?? "wyłączony"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        let submenu = NSMenu()
+
+        submenu.addItem(workdayEndOption(title: "Wyłączony", tag: -1, checked: current == nil))
+        submenu.addItem(.separator())
+
+        for minutes in stride(from: 15 * 60, through: 19 * 60, by: 30) {
+            guard let option = WorkdayEnd(minutesOfDay: minutes) else {
+                continue
+            }
+
+            submenu.addItem(
+                workdayEndOption(title: option.label, tag: minutes, checked: current == option)
+            )
+        }
+
+        item.submenu = submenu
+        return item
+    }
+
+    private func workdayEndOption(title: String, tag: Int, checked: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(selectWorkdayEnd(_:)), keyEquivalent: "")
+        item.target = self
+        item.tag = tag
+        item.state = checked ? .on : .off
+        return item
+    }
+
+    @objc private func selectWorkdayEnd(_ sender: NSMenuItem) {
+        if sender.tag < 0 {
+            UserDefaults.standard.removeObject(forKey: workdayEndKey)
+        } else {
+            UserDefaults.standard.set(sender.tag, forKey: workdayEndKey)
+        }
+
+        let alreadyPassedToday = workdayEnd?.shouldFire(
+            now: Date(),
+            lastFired: nil,
+            calendar: calendar
+        ) ?? false
+
+        if alreadyPassedToday {
+            UserDefaults.standard.set(Date(), forKey: workdayEndLastFiredKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: workdayEndLastFiredKey)
+        }
+
+        refresh()
+    }
+
+    private func endWorkdayIfDue(active: (Date, String)?) {
+        guard active != nil, let end = workdayEnd else {
+            return
+        }
+
+        let lastFired = UserDefaults.standard.object(forKey: workdayEndLastFiredKey) as? Date
+
+        guard end.shouldFire(now: Date(), lastFired: lastFired, calendar: calendar) else {
+            return
+        }
+
+        UserDefaults.standard.set(Date(), forKey: workdayEndLastFiredKey)
+        quitTunnelblick()
+    }
+
+    // Tunnelblick delays its own termination until it has torn the tunnel down, so
+    // the Apple Event can block for a while. The timeout turns a hang into a logged
+    // failure instead of an osascript process left running until the next reboot.
+    private static let quitTunnelblickScript = """
+    with timeout of 60 seconds
+        tell application "Tunnelblick" to quit
+    end timeout
+    """
+
+    private func quitTunnelblick() {
+        let process = Process()
+        let errors = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", Self.quitTunnelblickScript]
+        process.standardError = errors
+        process.terminationHandler = { [weak self] finished in
+            let message = String(
+                data: errors.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            if finished.terminationStatus == 0 {
+                self?.log("workday end: asked Tunnelblick to quit")
+            } else {
+                self?.log("workday end: osascript exit \(finished.terminationStatus): \(message)")
+            }
+        }
+
+        do {
+            try process.run()
+        } catch {
+            log("workday end: could not run osascript: \(error.localizedDescription)")
+        }
+    }
+
+    private func log(_ message: String) {
+        let path = NSString(string: "~/Library/Logs/VPNTime.log").expandingTildeInPath
+        let line = ISO8601DateFormatter().string(from: Date()) + " " + message + "\n"
+
+        guard let data = line.data(using: .utf8) else {
+            return
+        }
+
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
     }
 
     private func disabled(_ title: String) -> NSMenuItem {

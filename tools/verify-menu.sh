@@ -5,6 +5,9 @@
 # The recovery plan wanted this green on the ORIGINAL binary first. That binary
 # never existed on this machine, so its first green run was the rebuilt app:
 # it proves conformance to docs/recovered-api.md, not parity with the lost app.
+#
+# 2026-09-15: layout extended by 'Koniec pracy: …' after the autostart toggle.
+# Entries 1-9 still match the recovered layout; 10 is new and 11-15 are shifted.
 set -uo pipefail
 
 read_menu() {
@@ -58,16 +61,17 @@ check 6  '^SEP$'
 check 7  '^(● Połączony \(.+\) od [0-9]{2}:[0-9]{2}|○ Rozłączony)$'
 check 8  '^SEP$'
 check 9  '^Uruchamiaj przy logowaniu$'
-check 10 '^SEP$'
-check 11 '^Pokaż plik z historią$'
-check 12 '^Odśwież$'
-check 13 '^SEP$'
-check 14 '^Zakończ$'
+check 10 '^Koniec pracy: (wyłączony|[0-9]{2}:[0-9]{2})$'
+check 11 '^SEP$'
+check 12 '^Pokaż plik z historią$'
+check 13 '^Odśwież$'
+check 14 '^SEP$'
+check 15 '^Zakończ$'
 
 count="$(printf '%s\n' "$menu" | grep -c .)"
 
-if [ "$count" -ne 14 ]; then
-  echo "FAIL: expected 14 menu entries, got $count"
+if [ "$count" -ne 15 ]; then
+  echo "FAIL: expected 15 menu entries, got $count"
   fail=1
 fi
 

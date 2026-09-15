@@ -54,6 +54,26 @@ skopiowany, podpisany ad-hoc bundle.
 `verify-menu.sh` czyta menu przez System Events, więc wymaga uprawnienia
 **Dostępność** dla terminala, z którego jest uruchamiany.
 
+## Koniec pracy
+
+W menu, pod przełącznikiem autostartu, siedzi pozycja **Koniec pracy** z podmenu
+(`Wyłączony` plus godziny od 15:00 do 19:00 co pół godziny). Po ustawieniu
+godziny apka zamyka Tunnelblicka, gdy ta godzina nadejdzie — co rozłącza VPN
+i domyka sesję w CSV.
+
+Trzy rzeczy warto wiedzieć:
+
+- Zamknięcie odpala się **tylko przy aktywnej sesji VPN**. Ustawiona godzina
+  przy rozłączonym VPN-ie nic nie robi; nie zamknie też Tunnelblicka, jeśli
+  połączysz się ponownie po godzinie końca pracy.
+- Odpala się **raz dziennie**. Data ostatniego odpalenia siedzi w preferencjach,
+  więc restart apki wieczorem nie wywoła zamknięcia drugi raz.
+- Wybranie godziny, która **dziś już minęła**, nie zamyka niczego natychmiast —
+  ustawienie wchodzi w życie od następnego dnia.
+
+Dokładność to ±15 s (interwał timera apki). Wynik każdej próby zamknięcia ląduje
+w `~/Library/Logs/VPNTime.log`.
+
 ## Aliasy
 
 ```
@@ -90,7 +110,10 @@ System Events, stałe AppKit zdekodowane z `otool -tV`. Zapis tego śledztwa:
 [`docs/recovered-api.md`](docs/recovered-api.md), pełny plan odtworzenia:
 [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
-Dwie rzeczy w tym repo **nie** pochodzą z oryginału i są świadomymi zmianami:
-ikona aplikacji (oryginał jej nie miał) i własny glif w pasku menu zamiast
-systemowych symboli `lock.fill` / `lock.open`. Skrypty bash nie przetrwały w
-żadnej kopii — odtworzono je z kontraktów zamrożonych w testach.
+Cztery rzeczy w tym repo **nie** pochodzą z oryginału i są świadomymi zmianami:
+ikona aplikacji (oryginał jej nie miał), własny glif w pasku menu zamiast
+systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy" (nowa
+pozycja menu, przez co `verify-menu.sh` sprawdza teraz 15 pozycji zamiast 14 —
+zgodność z odzyskanym layoutem dowodzą dalej pozycje 1–9) oraz same skrypty
+bash, które nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów
+zamrożonych w testach.
