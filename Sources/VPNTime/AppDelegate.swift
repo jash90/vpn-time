@@ -148,30 +148,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitTunnelblick()
     }
 
-    // Tunnelblick delays its own termination until it has torn the tunnel down, so
-    // the Apple Event can block for a while. The timeout turns a hang into a logged
-    // failure instead of an osascript process left running until the next reboot.
+    // Quitting Tunnelblick does NOT tear down an established tunnel: its openvpn
+    // processes are root daemons that outlive it, so the tracker would keep the
+    // session open forever. Disconnect first, wait for the configurations to
+    // report EXITING, and only then quit.
+    //
+    // The outer timeout turns a hang into a logged failure instead of an osascript
+    // process left running until the next reboot.
     private static let quitTunnelblickScript = """
-    with timeout of 60 seconds
-        tell application "Tunnelblick" to quit
+    with timeout of 120 seconds
+        tell application "Tunnelblick"
+            disconnect all
+
+            set waited to 0
+            repeat while waited < 60
+                if (count of (configurations whose state is not "EXITING")) is 0 then exit repeat
+                delay 1
+                set waited to waited + 1
+            end repeat
+
+            set stuck to (count of (configurations whose state is not "EXITING"))
+            set summary to "disconnect took " & waited & "s, still connected: " & stuck
+            quit
+            return summary
+        end tell
     end timeout
     """
 
     private func quitTunnelblick() {
         let process = Process()
         let errors = Pipe()
+        let output = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", Self.quitTunnelblickScript]
         process.standardError = errors
+        process.standardOutput = output
         process.terminationHandler = { [weak self] finished in
+            let report = String(
+                data: output.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
             let message = String(
                 data: errors.fileHandleForReading.readDataToEndOfFile(),
                 encoding: .utf8
             )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
             if finished.terminationStatus == 0 {
-                self?.log("workday end: asked Tunnelblick to quit")
+                self?.log("workday end: \(report.isEmpty ? "closed Tunnelblick" : report)")
             } else {
                 self?.log("workday end: osascript exit \(finished.terminationStatus): \(message)")
             }
