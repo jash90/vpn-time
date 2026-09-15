@@ -75,4 +75,20 @@ final class VPNStoreTests: XCTestCase {
     func testMissingCSVYieldsNoSessions() throws {
         XCTAssertTrue(try store().sessions().isEmpty)
     }
+
+    func testReadsActiveSessionFromStateFile() throws {
+        let subject = try store(state: "1789019070\tOffice_VPN_bartlomiej_zimny\n")
+        let active = subject.activeSession()
+
+        XCTAssertEqual(active?.0, Date(timeIntervalSince1970: 1789019070))
+        XCTAssertEqual(active?.1, "Office_VPN_bartlomiej_zimny")
+    }
+
+    func testNoActiveSessionWhenStateFileMissing() throws {
+        XCTAssertNil(try store().activeSession())
+    }
+
+    func testNoActiveSessionWhenStateFileMalformed() throws {
+        XCTAssertNil(try store(state: "garbage\n").activeSession())
+    }
 }
