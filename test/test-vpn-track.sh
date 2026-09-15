@@ -74,4 +74,13 @@ assert_eq "$(cut -f1 "$HOME/.vpn-sessions.state")" \
   "$(date -j -f '%Y-%m-%d %H:%M:%S' '2026-09-15 09:23:11' +%s)" \
   "start parsed from a 'YYYY-MM-DD HH:MM:SS' log line"
 
+echo "Tunnelblick stamps a fractional epoch (--machine-readable-output)"
+setup
+fake_connected
+printf '1789458856.140523 1 OpenVPN 2.7.7 [git:9/a15b444bef68de96+] aarch64-apple-darwin\n' \
+  > "$VPN_TRACK_LOGDIR/c.openvpn.log"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$(cut -f1 "$HOME/.vpn-sessions.state")" "1789458856" \
+  "fractional epoch truncated to whole seconds"
+
 exit "$fail"

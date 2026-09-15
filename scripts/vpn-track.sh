@@ -30,7 +30,11 @@ connection_start() {
 
   if [ -n "$log" ]; then
     first="$(head -1 "$log")"
+
+    # Tunnelblick runs openvpn with --machine-readable-output, which stamps each
+    # line with a fractional epoch (1789458856.140523). Seconds are all we store.
     candidate="$(printf '%s' "$first" | awk '{print $1}')"
+    candidate="${candidate%%.*}"
 
     case "$candidate" in
       ''|*[!0-9]*) ;;
