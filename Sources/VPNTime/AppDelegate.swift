@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let workdayEndKey = "workdayEndMinutes"
     private let workdayEndLastFiredKey = "workdayEndLastFired"
     private var timer: Timer?
+    private lazy var workdayEndPicker = WorkdayEndPicker(calendar: calendar)
 
     private var agentPath: String {
         NSString(string: "~/Library/LaunchAgents/\(agentLabel).plist").expandingTildeInPath
@@ -95,47 +96,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func workdayEndItem() -> NSMenuItem {
-        let current = workdayEnd
         let item = NSMenuItem(
-            title: "Koniec pracy: " + (current?.label ?? "wyłączony"),
-            action: nil,
+            title: "Koniec pracy: " + (workdayEnd?.label ?? "wyłączony"),
+            action: #selector(openWorkdayEndPicker),
             keyEquivalent: ""
         )
-        let submenu = NSMenu()
-
-        submenu.addItem(workdayEndOption(title: "Wyłączony", tag: -1, checked: current == nil))
-        submenu.addItem(.separator())
-
-        for minutes in stride(from: 15 * 60, through: 19 * 60, by: 30) {
-            guard let option = WorkdayEnd(minutesOfDay: minutes) else {
-                continue
-            }
-
-            submenu.addItem(
-                workdayEndOption(title: option.label, tag: minutes, checked: current == option)
-            )
-        }
-
-        item.submenu = submenu
-        return item
-    }
-
-    private func workdayEndOption(title: String, tag: Int, checked: Bool) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(selectWorkdayEnd(_:)), keyEquivalent: "")
         item.target = self
-        item.tag = tag
-        item.state = checked ? .on : .off
         return item
     }
 
-    @objc private func selectWorkdayEnd(_ sender: NSMenuItem) {
-        if sender.tag < 0 {
-            UserDefaults.standard.removeObject(forKey: workdayEndKey)
+    @objc private func openWorkdayEndPicker() {
+        workdayEndPicker.show(current: workdayEnd) { [weak self] end in
+            self?.applyWorkdayEnd(end)
+        }
+    }
+
+    private func applyWorkdayEnd(_ end: WorkdayEnd?) {
+        if let end {
+            UserDefaults.standard.set(end.minutesOfDay, forKey: workdayEndKey)
         } else {
-            UserDefaults.standard.set(sender.tag, forKey: workdayEndKey)
+            UserDefaults.standard.removeObject(forKey: workdayEndKey)
         }
 
-        let alreadyPassedToday = workdayEnd?.shouldFire(
+        let alreadyPassedToday = end?.shouldFire(
             now: Date(),
             lastFired: nil,
             calendar: calendar

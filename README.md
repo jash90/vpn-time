@@ -56,10 +56,11 @@ skopiowany, podpisany ad-hoc bundle.
 
 ## Koniec pracy
 
-W menu, pod przełącznikiem autostartu, siedzi pozycja **Koniec pracy** z podmenu
-(`Wyłączony` plus godziny od 15:00 do 19:00 co pół godziny). Po ustawieniu
-godziny apka zamyka Tunnelblicka, gdy ta godzina nadejdzie — co rozłącza VPN
-i domyka sesję w CSV.
+W menu, pod przełącznikiem autostartu, siedzi pozycja **Koniec pracy**.
+Kliknięcie otwiera panel z pickerem godziny — dowolna godzina i minuta, do
+wpisania z klawiatury albo wyklikania strzałkami, Enter zatwierdza. Po ustawieniu
+apka zamyka Tunnelblicka, gdy ta godzina nadejdzie — co rozłącza VPN i domyka
+sesję w CSV. Przycisk `Wyłącz` kasuje ustawienie.
 
 Trzy rzeczy warto wiedzieć:
 
