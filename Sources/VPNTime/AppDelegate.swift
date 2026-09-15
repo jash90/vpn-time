@@ -150,63 +150,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Quitting Tunnelblick does NOT tear down an established tunnel: its openvpn
     // processes are root daemons that outlive it, so the tracker would keep the
-    // session open forever. Disconnect first, wait for the configurations to
-    // report EXITING, and only then quit.
+    // session open forever. Disconnect first, wait for the daemons to actually go
+    // away, and only then quit.
     //
-    // The outer timeout turns a hang into a logged failure instead of an osascript
-    // process left running until the next reboot.
-    private static let quitTunnelblickScript = """
-    with timeout of 120 seconds
-        tell application "Tunnelblick"
-            disconnect all
-
-            set waited to 0
-            repeat while waited < 60
-                if (count of (configurations whose state is not "EXITING")) is 0 then exit repeat
-                delay 1
-                set waited to waited + 1
-            end repeat
-
-            set stuck to (count of (configurations whose state is not "EXITING"))
-            set summary to "disconnect took " & waited & "s, still connected: " & stuck
-            quit
-            return summary
-        end tell
-    end timeout
-    """
-
+    // The wait watches the process list rather than Tunnelblick's own scripting
+    // state, which cannot be counted or iterated over from AppleScript.
     private func quitTunnelblick() {
-        let process = Process()
-        let errors = Pipe()
-        let output = Pipe()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let disconnect = Self.runScript("tell application \"Tunnelblick\" to disconnect all")
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", Self.quitTunnelblickScript]
-        process.standardError = errors
-        process.standardOutput = output
-        process.terminationHandler = { [weak self] finished in
-            let report = String(
-                data: output.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard disconnect.isEmpty else {
+                self?.log("workday end: disconnect failed: \(disconnect)")
+                return
+            }
 
-            let message = String(
-                data: errors.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var waited = 0
 
-            if finished.terminationStatus == 0 {
-                self?.log("workday end: \(report.isEmpty ? "closed Tunnelblick" : report)")
+            while waited < 60, Self.tunnelIsUp() {
+                Thread.sleep(forTimeInterval: 1)
+                waited += 1
+            }
+
+            let stuck = Self.tunnelIsUp()
+            let quit = Self.runScript("tell application \"Tunnelblick\" to quit")
+
+            if quit.isEmpty {
+                self?.log("workday end: disconnected in \(waited)s, still up: \(stuck), Tunnelblick closed")
             } else {
-                self?.log("workday end: osascript exit \(finished.terminationStatus): \(message)")
+                self?.log("workday end: disconnected in \(waited)s, quit failed: \(quit)")
             }
         }
+    }
+
+    private static func tunnelIsUp() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", "Tunnelblick.app/Contents/Resources/openvpn"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
 
         do {
             try process.run()
         } catch {
-            log("workday end: could not run osascript: \(error.localizedDescription)")
+            return false
         }
+
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    // Returns an empty string on success, otherwise the failure to log.
+    private static func runScript(_ source: String) -> String {
+        let process = Process()
+        let errors = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", "with timeout of 90 seconds\n\(source)\nend timeout"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+
+        do {
+            try process.run()
+        } catch {
+            return error.localizedDescription
+        }
+
+        let message = String(
+            data: errors.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        process.waitUntilExit()
+
+        if process.terminationStatus == 0 {
+            return ""
+        }
+
+        return message.isEmpty ? "exit \(process.terminationStatus)" : message
     }
 
     private func log(_ message: String) {
