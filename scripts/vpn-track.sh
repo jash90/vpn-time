@@ -24,17 +24,25 @@ config_name() {
 }
 
 connection_start() {
-  local log candidate
+  local log first candidate
 
   log="$(ls -t "$LOGDIR"/*.openvpn.log 2>/dev/null | head -1)"
 
   if [ -n "$log" ]; then
-    candidate="$(head -1 "$log" | awk '{print $1}')"
+    first="$(head -1 "$log")"
+    candidate="$(printf '%s' "$first" | awk '{print $1}')"
 
     case "$candidate" in
       ''|*[!0-9]*) ;;
       *) printf '%s' "$candidate"; return ;;
     esac
+
+    candidate="$(date -j -f '%Y-%m-%d %H:%M:%S' "$(printf '%s' "$first" | cut -c1-19)" +%s 2>/dev/null)"
+
+    if [ -n "$candidate" ]; then
+      printf '%s' "$candidate"
+      return
+    fi
   fi
 
   date +%s

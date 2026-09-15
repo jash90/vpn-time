@@ -64,4 +64,14 @@ rows_before="$(wc -l < "$HOME/.vpn-sessions.csv")"
 bash "$ROOT/scripts/vpn-track.sh"
 assert_eq "$(wc -l < "$HOME/.vpn-sessions.csv")" "$rows_before" "no extra row"
 
+echo "openvpn 2.7 stamps a local timestamp instead of an epoch"
+setup
+fake_connected
+printf '2026-09-15 09:23:11 OpenVPN 2.7.7 aarch64-apple-darwin25.6.0\n' \
+  > "$VPN_TRACK_LOGDIR/b.openvpn.log"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$(cut -f1 "$HOME/.vpn-sessions.state")" \
+  "$(date -j -f '%Y-%m-%d %H:%M:%S' '2026-09-15 09:23:11' +%s)" \
+  "start parsed from a 'YYYY-MM-DD HH:MM:SS' log line"
+
 exit "$fail"
