@@ -32,6 +32,14 @@ fake_disconnected() {
   export VPN_TRACK_PS_CMD="true"
 }
 
+# Activity tests run with the VPN down so only the activity code reacts.
+fake_idle() {
+  export VPN_TRACK_IDLE_CMD="echo $1"
+}
+
+# Every test below that does not care about activity reports the user as away.
+fake_idle 9999
+
 echo "connecting writes the state file"
 setup
 fake_connected
@@ -82,5 +90,58 @@ printf '1789458856.140523 1 OpenVPN 2.7.7 [git:9/a15b444bef68de96+] aarch64-appl
 bash "$ROOT/scripts/vpn-track.sh"
 assert_eq "$(cut -f1 "$HOME/.vpn-sessions.state")" "1789458856" \
   "fractional epoch truncated to whole seconds"
+
+echo "activity: an idle user records nothing"
+setup
+fake_disconnected
+fake_idle 300
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$([ -f "$HOME/.vpn-activity.state" ] && echo yes || echo no)" "no" "no activity state"
+
+echo "activity: an active user opens a streak"
+fake_idle 5
+bash "$ROOT/scripts/vpn-track.sh"
+now="$(date +%s)"
+start="$(cut -f1 "$HOME/.vpn-activity.state")"
+assert_eq "$([ $(( now - 5 - start )) -le 2 ] && [ $(( now - 5 - start )) -ge 0 ] && echo ok || echo "$start")" "ok" \
+  "streak starts at now minus idle"
+assert_eq "$(cut -f2 "$HOME/.vpn-activity.state")" "$start" "last activity equals the start"
+assert_eq "$([ -f "$HOME/.vpn-activity.csv" ] && echo yes || echo no)" "no" "no CSV for an open streak"
+
+echo "activity: a short break extends the streak"
+seed_start=$(( now - 1200 ))
+printf '%s\t%s\n' "$seed_start" "$(( now - 600 ))" > "$HOME/.vpn-activity.state"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$(cut -f1 "$HOME/.vpn-activity.state")" "$seed_start" "streak start kept"
+last="$(cut -f2 "$HOME/.vpn-activity.state")"
+assert_eq "$([ "$last" -ge $(( now - 6 )) ] && echo ok || echo "$last")" "ok" "last activity moved to now"
+assert_eq "$([ -f "$HOME/.vpn-activity.csv" ] && echo yes || echo no)" "no" "still no CSV"
+
+echo "activity: a break over 30 minutes closes the streak"
+old_start=$(( now - 7200 ))
+old_end=$(( now - 3600 ))
+printf '%s\t%s\n' "$old_start" "$old_end" > "$HOME/.vpn-activity.state"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$(head -1 "$HOME/.vpn-activity.csv")" "start_iso,end_iso" "activity CSV header"
+assert_eq "$(tail -1 "$HOME/.vpn-activity.csv")" \
+  "$(date -r "$old_start" '+%Y-%m-%d %H:%M:%S'),$(date -r "$old_end" '+%Y-%m-%d %H:%M:%S')" \
+  "finished streak appended"
+new_start="$(cut -f1 "$HOME/.vpn-activity.state")"
+assert_eq "$([ "$new_start" -ge $(( now - 6 )) ] && echo ok || echo "$new_start")" "ok" "a new streak opened"
+
+echo "activity: a corrupt state file is replaced"
+printf 'garbage\n' > "$HOME/.vpn-activity.state"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$(cut -f1 "$HOME/.vpn-activity.state" | grep -c '^[0-9][0-9]*$')" "1" "state rewritten with an epoch"
+
+echo "activity and VPN tracking work in the same run"
+setup
+fake_connected
+fake_idle 0
+printf '%s Mon Jul  8 07:27:37 2026 OpenVPN starting\n' "$(( $(date +%s) - 60 ))" \
+  > "$VPN_TRACK_LOGDIR/d.openvpn.log"
+bash "$ROOT/scripts/vpn-track.sh"
+assert_eq "$([ -f "$HOME/.vpn-sessions.state" ] && echo yes || echo no)" "yes" "VPN state written"
+assert_eq "$([ -f "$HOME/.vpn-activity.state" ] && echo yes || echo no)" "yes" "activity state written"
 
 exit "$fail"

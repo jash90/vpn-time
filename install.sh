@@ -16,7 +16,8 @@ if [ ! -d "$APP_SRC" ]; then
 fi
 
 echo "== backing up session data =="
-for f in "$HOME/.vpn-sessions.csv" "$HOME/.vpn-sessions.state"; do
+for f in "$HOME/.vpn-sessions.csv" "$HOME/.vpn-sessions.state" \
+  "$HOME/.vpn-activity.csv" "$HOME/.vpn-activity.state" "$HOME/.vpn-workdays.csv"; do
   if [ -f "$f" ]; then
     cp "$f" "$f.bak-$STAMP"
     echo "  $f -> $f.bak-$STAMP"
