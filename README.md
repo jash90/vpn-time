@@ -13,12 +13,14 @@ miesiącu".
 
 Dwa niezależne byty:
 
-- **Poller** (`vpn-track.sh`, launchd co 30 s) — jedyne źródło danych. Sprawdza,
-  czy żyje proces openvpn Tunnelblicka; przy połączeniu zapisuje
+- **Poller** (`vpn-track.sh`, launchd co 30 s) — jedyne źródło surowych danych.
+  Sprawdza, czy żyje proces openvpn Tunnelblicka; przy połączeniu zapisuje
   `~/.vpn-sessions.state`, przy rozłączeniu dopisuje wiersz do
-  `~/.vpn-sessions.csv`. Działa niezależnie od tego, czy apka jest uruchomiona.
-- **Widok** (`VPN Time.app`) — czyta CSV i plik stanu co 15 s. Nic nie zapisuje
-  poza plistem autostartu. Zamknięcie apki nie przerywa zbierania danych.
+  `~/.vpn-sessions.csv`. Przy okazji notuje ciągi aktywności przy komputerze
+  (`~/.vpn-activity.*`). Działa niezależnie od tego, czy apka jest uruchomiona.
+- **Widok** (`VPN Time.app`) — czyta te pliki co 15 s. Sam zapisuje tylko plist
+  autostartu i historię początków pracy (`~/.vpn-workdays.csv`). Zamknięcie apki
+  nie przerywa zbierania danych.
 
 Rdzeń logiki (`VPNTimeCore`) jest oddzielony od AppKit, żeby dał się testować
 jednostkowo; `AppDelegate` jest cienki i weryfikowany end-to-end.
@@ -33,6 +35,8 @@ jednostkowo; `AppDelegate` jest cienki i weryfikowany end-to-end.
 | Agent pollera | `~/Library/LaunchAgents/com.redge.vpntrack.plist` |
 | Agent apki | `~/Library/LaunchAgents/com.redge.vpntimebar.plist` |
 | Dane | `~/.vpn-sessions.csv`, `~/.vpn-sessions.state` |
+| Aktywność | `~/.vpn-activity.csv` (zamknięte ciągi), `~/.vpn-activity.state` (bieżący) |
+| Dni pracy | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source`) |
 
 ## Instalacja
 
@@ -54,13 +58,70 @@ skopiowany, podpisany ad-hoc bundle.
 `verify-menu.sh` czyta menu przez System Events, więc wymaga uprawnienia
 **Dostępność** dla terminala, z którego jest uruchamiany.
 
+## Początek pracy
+
+Pod stanem połączenia menu pokazuje wiersz `Praca od 08:12 (aktywność) · 6h 05m`,
+czyli kiedy zaczął się dzień pracy i ile czasu od tego minęło. Licznik to czas
+brutto od startu, przerwy nie są odejmowane.
+
+Jak apka wykrywa start:
+
+- Poller co 30 s czyta czas bezczynności klawiatury i myszy (`HIDIdleTime`).
+  Aktywność w ostatniej minucie przedłuża bieżący **ciąg aktywności**. Przerwa
+  dłuższa niż **30 min** (także uśpienie Maca) zamyka ciąg i zaczyna nowy.
+- Startem jest **początek ciągu, w którym nastąpiło pierwsze dzisiejsze
+  połączenie VPN**. Rzut oka na laptopa o 7:00 nie liczy się, jeśli właściwa
+  praca ruszyła o 8:40, a VPN o 8:45 — start to 8:40.
+- Gdy dziś nie było jeszcze VPN-a, pokazany jest pierwszy ciąg aktywności z
+  dopiskiem `(bez VPN)`, jako start wstępny.
+- Źródło w nawiasie: `aktywność` (ciąg zaczął się przed VPN-em), `VPN` (brak
+  wcześniejszej aktywności), `ręcznie`.
+
+Przełącznik **Wykrywaj początek pracy** w menu wyłącza wykrywanie. Wtedy liczy
+się tylko ręczna wartość, a bez niej menu pokazuje `Praca: nie wykryto`.
+
+## Formularz „Czas pracy”
+
+Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają jedno okno.
+
+Górna część dotyczy **dzisiaj**:
+
+- początek: `Automatycznie` (z podglądem, co zostało wykryte) albo `Ręcznie` z
+  godziną. Ręczna wartość obowiązuje **tylko tego dnia**; następnego dnia start
+  znów jest wykrywany;
+- przełącznik wykrywania;
+- koniec: `Wyłączony`, `O godzinie` albo `Po … od początku pracy`;
+- podgląd na żywo, np. `Dziś: 08:00 → 16:00 (8h 00m)`.
+
+`Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
+minął, nic nie zamyka się od razu. Zapis bez zmiany reguły końca nie odpali go
+drugi raz tego samego dnia.
+
+Dolna część to **dni pracy** z `~/.vpn-workdays.csv`, łącznie z dzisiejszym
+(wiersz `dziś`). Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od`
+i `do`, potem `Zapisz dzień`; wybranie daty, której nie ma w tabeli, dodaje
+nowy dzień. `Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło
+`poprawiony` i apka już ich nie nadpisuje.
+
+Dzisiejszy wiersz powstaje z ustawień: start jak w menu, koniec według reguły
+końca pracy (np. start + 11 h). Zapis dzisiejszego dnia w tabeli ustawia
+ręczny początek na dziś i zapamiętuje podany koniec. Ten koniec trafia tylko do
+historii; o zamknięciu Tunnelblicka dalej decyduje reguła. Kolejne `Zapisz` w
+górnej części wraca do końca z reguły. Dzisiejszego wiersza nie da się usunąć —
+służy do tego `Automatycznie`.
+
+Historia ma kolumny `date,start_iso,end_iso,source`; starsze pliki bez kolumny
+końca są czytane dalej. Po uruchomieniu apka uzupełnia brakujące minione dni:
+start według reguły wykrywania, koniec jako koniec ostatniej sesji VPN tego dnia.
+Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
+do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
+
 ## Koniec pracy
 
-W menu, pod przełącznikiem autostartu, siedzi pozycja **Koniec pracy**.
-Kliknięcie otwiera panel z pickerem godziny — dowolna godzina i minuta, do
-wpisania z klawiatury albo wyklikania strzałkami, Enter zatwierdza. Po ustawieniu
-apka zamyka Tunnelblicka, gdy ta godzina nadejdzie — co rozłącza VPN i domyka
-sesję w CSV. Przycisk `Wyłącz` kasuje ustawienie.
+Koniec pracy ustawia się w formularzu „Czas pracy”. **O godzinie** to dowolna
+godzina i minuta. **Po … od początku pracy** to np. `08:00`, czyli 8 h od
+wykrytego lub ręcznie ustawionego startu. Gdy ten moment nadejdzie, apka rozłącza
+VPN i zamyka Tunnelblicka, co domyka sesję w CSV.
 
 Trzy rzeczy warto wiedzieć:
 
@@ -70,7 +131,10 @@ Trzy rzeczy warto wiedzieć:
 - Odpala się **raz dziennie**. Data ostatniego odpalenia siedzi w preferencjach,
   więc restart apki wieczorem nie wywoła zamknięcia drugi raz.
 - Wybranie godziny, która **dziś już minęła**, nie zamyka niczego natychmiast —
-  ustawienie wchodzi w życie od następnego dnia.
+  ustawienie wchodzi w życie od następnego dnia. To samo dotyczy ręcznej zmiany
+  początku pracy, po której termin „start + N h” okazuje się już miniony.
+- W trybie „po czasie” bez znanego startu nic się nie odpala. Gdy koniec już raz
+  odpalił danego dnia, późniejsze przesunięcie startu nie odpali go ponownie.
 
 Dokładność to ±15 s (interwał timera apki). Wynik każdej próby zamknięcia ląduje
 w `~/Library/Logs/VPNTime.log`.
@@ -111,10 +175,10 @@ System Events, stałe AppKit zdekodowane z `otool -tV`. Zapis tego śledztwa:
 [`docs/recovered-api.md`](docs/recovered-api.md), pełny plan odtworzenia:
 [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
-Cztery rzeczy w tym repo **nie** pochodzą z oryginału i są świadomymi zmianami:
+Pięć rzeczy w tym repo **nie** pochodzi z oryginału i są świadomymi zmianami:
 ikona aplikacji (oryginał jej nie miał), własny glif w pasku menu zamiast
-systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy" (nowa
-pozycja menu, przez co `verify-menu.sh` sprawdza teraz 15 pozycji zamiast 14 —
-zgodność z odzyskanym layoutem dowodzą dalej pozycje 1–9) oraz same skrypty
-bash, które nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów
-zamrożonych w testach.
+systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy", funkcja
+„Początek pracy" (razem cztery nowe pozycje menu, przez co `verify-menu.sh`
+sprawdza teraz 18 pozycji zamiast 14) oraz same skrypty bash, które nie
+przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
+testach.

@@ -91,4 +91,41 @@ final class VPNStoreTests: XCTestCase {
     func testNoActiveSessionWhenStateFileMalformed() throws {
         XCTAssertNil(try store(state: "garbage\n").activeSession())
     }
+
+    func testActivityStreaksCombineTheCSVAndTheOpenStreak() throws {
+        let csvURL = dir.appendingPathComponent("activity.csv")
+        let stateURL = dir.appendingPathComponent("activity.state")
+        try """
+        start_iso,end_iso
+        2026-10-02 07:00:00,2026-10-02 07:05:00
+        garbage
+        """.write(to: csvURL, atomically: true, encoding: .utf8)
+        try "1790000000\t1790003600\n".write(to: stateURL, atomically: true, encoding: .utf8)
+
+        let store = VPNStore(
+            csvPath: dir.appendingPathComponent("none.csv").path,
+            statePath: dir.appendingPathComponent("none.state").path,
+            activityCSVPath: csvURL.path,
+            activityStatePath: stateURL.path
+        )
+        let streaks = store.activityStreaks()
+
+        XCTAssertEqual(streaks.count, 2)
+        XCTAssertEqual(streaks[0].end.timeIntervalSince(streaks[0].start), 300)
+        XCTAssertEqual(streaks[1], ActivityStreak(
+            start: Date(timeIntervalSince1970: 1_790_000_000),
+            end: Date(timeIntervalSince1970: 1_790_003_600)
+        ))
+    }
+
+    func testNoActivityFilesMeansNoStreaks() {
+        let store = VPNStore(
+            csvPath: dir.appendingPathComponent("none.csv").path,
+            statePath: dir.appendingPathComponent("none.state").path,
+            activityCSVPath: dir.appendingPathComponent("a.csv").path,
+            activityStatePath: dir.appendingPathComponent("a.state").path
+        )
+
+        XCTAssertTrue(store.activityStreaks().isEmpty)
+    }
 }

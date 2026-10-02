@@ -4,6 +4,7 @@ set -uo pipefail
 
 CSV="$HOME/.vpn-sessions.csv"
 STATE="$HOME/.vpn-sessions.state"
+WORKDAYS="$HOME/.vpn-workdays.csv"
 MODE="${1:-day}"
 
 hours_minutes() {
@@ -18,6 +19,19 @@ bucket_of() {
     week)  date -j -f '%Y-%m-%d' "$day" '+%G-W%V' 2>/dev/null ;;
     *)     printf '%s' "$day" ;;
   esac
+}
+
+# "start HH:MM" plus "koniec HH:MM" when known, from the app's
+# ~/.vpn-workdays.csv. Old rows have no end column (date,start_iso,source).
+workday_of() {
+  [ -f "$WORKDAYS" ] || return 0
+  awk -F, -v day="$1" '
+    $1 == day {
+      out = "start " substr($2, 12, 5)
+      if (NF >= 4 && $3 != "") out = out "  koniec " substr($3, 12, 5)
+      print out
+      exit
+    }' "$WORKDAYS"
 }
 
 buckets() {
@@ -47,7 +61,17 @@ else
   total=0
 
   while IFS=$'\t' read -r label seconds; do
-    printf '%-14s %s\n' "$label" "$(hours_minutes "$seconds")"
+    line="$(printf '%-14s %s' "$label" "$(hours_minutes "$seconds")")"
+
+    if [ "$MODE" = "day" ]; then
+      workday="$(workday_of "$label")"
+
+      if [ -n "$workday" ]; then
+        line="$line   $workday"
+      fi
+    fi
+
+    printf '%s\n' "$line"
     total=$(( total + seconds ))
   done <<< "$summed"
 

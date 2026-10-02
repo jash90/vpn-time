@@ -33,6 +33,31 @@ assert_contains "$out" "2026-07-08     8h 57m" "8 July sums 839+31399 = 32238 s 
 assert_contains "$out" "2026-07-09     1h 00m" "9 July sums 3600 s"
 assert_contains "$out" "RAZEM:         9h 57m" "35838 s total across both days"
 
+echo "vpn-report.sh day with recorded workday starts"
+cat > "$HOME/.vpn-workdays.csv" <<'CSV'
+date,start_iso,end_iso,source
+2026-07-08,2026-07-08 07:20:05,2026-07-08 16:30:00,edited
+CSV
+out="$(bash "$ROOT/scripts/vpn-report.sh" day)"
+assert_contains "$out" "2026-07-08     8h 57m   start 07:20  koniec 16:30" "start and end shown for a recorded day"
+
+echo "vpn-report.sh day with an old three-column workdays file"
+cat > "$HOME/.vpn-workdays.csv" <<'CSV'
+date,start_iso,source
+2026-07-08,2026-07-08 07:20:05,activity
+CSV
+out="$(bash "$ROOT/scripts/vpn-report.sh" day)"
+assert_contains "$out" "2026-07-08     8h 57m   start 07:20" "start shown from an old row"
+if printf '%s' "$out" | grep -q 'koniec'; then
+  echo "  FAIL: old row must not show an end"
+  fail=1
+fi
+assert_contains "$out" "$(printf '2026-07-09     1h 00m\n')" "day without a start unchanged"
+if printf '%s' "$out" | grep -q '2026-07-09.*start'; then
+  echo "  FAIL: unexpected start on 9 July"
+  fail=1
+fi
+
 echo "vpn-report.sh month"
 out="$(bash "$ROOT/scripts/vpn-report.sh" month)"
 assert_contains "$out" "2026-07        9h 57m" "July bucket"

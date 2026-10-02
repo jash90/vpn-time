@@ -7,9 +7,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let calendar = Calendar.vpnTimeISO
     private let agentLabel = "com.redge.vpntimebar"
     private let workdayEndKey = "workdayEndMinutes"
+    private let workdayEndModeKey = "workdayEndMode"
+    private let workdayEndAfterKey = "workdayEndAfterMinutes"
     private let workdayEndLastFiredKey = "workdayEndLastFired"
+    private let workdayStartManualKey = "workdayStartManual"
+    private let workdayStartDetectionKey = "workdayStartDetection"
+    private let workdayEndManualKey = "workdayEndManual"
     private var timer: Timer?
-    private lazy var workdayEndPicker = WorkdayEndPicker(calendar: calendar)
+    private var workdayStart: WorkdayStart?
+    private lazy var detector = WorkdayStartDetector(calendar: calendar)
+    private lazy var history = WorkdayHistory(calendar: calendar)
+    private lazy var workdayForm = WorkdayForm(calendar: calendar, history: history)
 
     private var agentPath: String {
         NSString(string: "~/Library/LaunchAgents/\(agentLabel).plist").expandingTildeInPath
@@ -25,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.imagePosition = .imageLeading
+        backfillHistory()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -34,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refresh() {
         let sessions = store.sessions()
         let active = store.activeSession()
+
+        workdayStart = resolveStart(sessions: sessions, active: active)
+        history.record(workdayStart.flatMap { $0.provisional ? nil : $0 }, end: todayEnd, day: Date())
 
         if let active {
             statusItem.button?.image = MenuBarIcon.connected
@@ -66,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(disabled("○ Rozłączony"))
         }
 
+        menu.addItem(disabled(workedLine()))
+
         menu.addItem(.separator())
 
         let autostart = NSMenuItem(
@@ -76,6 +90,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autostart.target = self
         autostart.state = autostartEnabled() ? .on : .off
         menu.addItem(autostart)
+        menu.addItem(action(
+            "Początek pracy: " + (manualStart.map { "ręcznie " + clock.string(from: $0) } ?? "auto"),
+            #selector(openWorkdayForm)
+        ))
+
+        let detection = action("Wykrywaj początek pracy", #selector(toggleDetection))
+        detection.state = detectionEnabled ? .on : .off
+        menu.addItem(detection)
         menu.addItem(workdayEndItem())
 
         menu.addItem(.separator())
@@ -87,60 +109,202 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    private var workdayEnd: WorkdayEnd? {
-        guard let minutes = UserDefaults.standard.object(forKey: workdayEndKey) as? Int else {
+    private func vpnStarts(sessions: [Session], active: (Date, String)?) -> [Date] {
+        sessions.map(\.start) + (active.map { [$0.0] } ?? [])
+    }
+
+    private func resolveStart(sessions: [Session], active: (Date, String)?) -> WorkdayStart? {
+        detector.resolve(
+            now: Date(),
+            manual: manualStart,
+            detectionEnabled: detectionEnabled,
+            streaks: store.activityStreaks(),
+            vpnStarts: vpnStarts(sessions: sessions, active: active)
+        )
+    }
+
+    private func backfillHistory() {
+        guard detectionEnabled else {
+            return
+        }
+
+        history.backfill(
+            detector: detector,
+            streaks: store.activityStreaks(),
+            sessions: store.sessions(),
+            today: Date()
+        )
+    }
+
+    // Wall-clock time since the start; breaks are not subtracted.
+    private func workedLine() -> String {
+        guard let start = workdayStart else {
+            return "Praca: nie wykryto"
+        }
+
+        let source = WorkdayForm.label(for: start)
+        let worked = max(0, Int(Date().timeIntervalSince(start.date)))
+        return "Praca od \(clock.string(from: start.date)) (\(source)) · " + hoursMinutes(worked)
+    }
+
+    // Only today's manual values count; older ones are left in the defaults
+    // and simply ignored until they are overwritten.
+    private func today(_ key: String) -> Date? {
+        guard let date = UserDefaults.standard.object(forKey: key) as? Date,
+              calendar.isDate(date, inSameDayAs: Date()) else {
             return nil
         }
 
-        return WorkdayEnd(minutesOfDay: minutes)
+        return date
+    }
+
+    private var manualStart: Date? {
+        today(workdayStartManualKey)
+    }
+
+    // The end written to today's history row: one set by hand in the days
+    // table, otherwise the one the end rule plans. It only feeds the history;
+    // closing Tunnelblick still follows the rule.
+    private var todayEnd: Date? {
+        if let manual = today(workdayEndManualKey) {
+            return manual
+        }
+
+        guard let start = workdayStart?.date,
+              let planned = workdayEndRule?.trigger(now: Date(), start: start, calendar: calendar),
+              planned > start else {
+            return nil
+        }
+
+        return planned
+    }
+
+    private var detectionEnabled: Bool {
+        UserDefaults.standard.object(forKey: workdayStartDetectionKey) as? Bool ?? true
+    }
+
+    @objc private func toggleDetection() {
+        UserDefaults.standard.set(!detectionEnabled, forKey: workdayStartDetectionKey)
+        refresh()
+    }
+
+    @objc private func openWorkdayForm() {
+        let sessions = store.sessions()
+        let active = store.activeSession()
+        let detected = detector.resolve(
+            now: Date(),
+            manual: nil,
+            detectionEnabled: true,
+            streaks: store.activityStreaks(),
+            vpnStarts: vpnStarts(sessions: sessions, active: active)
+        )
+        let settings = WorkdaySettings(
+            manualStart: manualStart,
+            detectionEnabled: detectionEnabled,
+            endRule: workdayEndRule
+        )
+
+        workdayForm.show(
+            settings: settings,
+            detected: detected,
+            save: { [weak self] settings in self?.applyWorkdaySettings(settings) },
+            saveToday: { [weak self] start, end in self?.applyToday(start: start, end: end) }
+        )
+    }
+
+    private func applyWorkdaySettings(_ settings: WorkdaySettings) {
+        let defaults = UserDefaults.standard
+        let ruleChanged = settings.endRule != workdayEndRule
+
+        if let start = settings.manualStart {
+            defaults.set(start, forKey: workdayStartManualKey)
+        } else {
+            defaults.removeObject(forKey: workdayStartManualKey)
+        }
+
+        defaults.set(settings.detectionEnabled, forKey: workdayStartDetectionKey)
+        // The settings define the planned end again; an end typed into the
+        // days table for today no longer applies.
+        defaults.removeObject(forKey: workdayEndManualKey)
+
+        switch settings.endRule {
+        case .fixed(let end):
+            defaults.set("fixed", forKey: workdayEndModeKey)
+            defaults.set(end.minutesOfDay, forKey: workdayEndKey)
+        case .afterStart(let minutes):
+            defaults.set("afterStart", forKey: workdayEndModeKey)
+            defaults.set(minutes, forKey: workdayEndAfterKey)
+        case nil:
+            defaults.removeObject(forKey: workdayEndModeKey)
+            defaults.removeObject(forKey: workdayEndKey)
+            defaults.removeObject(forKey: workdayEndAfterKey)
+        }
+
+        // Saving must not close the VPN on the spot: an end that has already
+        // passed with the new settings only takes effect tomorrow. A new end
+        // rule may fire again today; moving only the start may not.
+        if ruleChanged {
+            defaults.removeObject(forKey: workdayEndLastFiredKey)
+        }
+
+        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        markWorkdayEndFiredIfPassed()
+        refresh()
+    }
+
+    // Today's row edited in the days table: its start becomes today's manual
+    // start, its end is kept for the history.
+    private func applyToday(start: Date, end: Date) {
+        UserDefaults.standard.set(start, forKey: workdayStartManualKey)
+        UserDefaults.standard.set(end, forKey: workdayEndManualKey)
+        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        markWorkdayEndFiredIfPassed()
+        refresh()
+    }
+
+    private var workdayEndRule: WorkdayEndRule? {
+        let defaults = UserDefaults.standard
+
+        if defaults.string(forKey: workdayEndModeKey) == "afterStart" {
+            return (defaults.object(forKey: workdayEndAfterKey) as? Int).map { .afterStart(minutes: $0) }
+        }
+
+        guard let minutes = defaults.object(forKey: workdayEndKey) as? Int,
+              let end = WorkdayEnd(minutesOfDay: minutes) else {
+            return nil
+        }
+
+        return .fixed(end)
     }
 
     private func workdayEndItem() -> NSMenuItem {
-        let item = NSMenuItem(
-            title: "Koniec pracy: " + (workdayEnd?.label ?? "wyłączony"),
-            action: #selector(openWorkdayEndPicker),
-            keyEquivalent: ""
+        action(
+            "Koniec pracy: " + (workdayEndRule?.label ?? "wyłączony"),
+            #selector(openWorkdayForm)
         )
-        item.target = self
-        return item
     }
 
-    @objc private func openWorkdayEndPicker() {
-        workdayEndPicker.show(current: workdayEnd) { [weak self] end in
-            self?.applyWorkdayEnd(end)
-        }
-    }
-
-    private func applyWorkdayEnd(_ end: WorkdayEnd?) {
-        if let end {
-            UserDefaults.standard.set(end.minutesOfDay, forKey: workdayEndKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: workdayEndKey)
-        }
-
-        let alreadyPassedToday = end?.shouldFire(
+    private func markWorkdayEndFiredIfPassed() {
+        let passed = workdayEndRule?.shouldFire(
             now: Date(),
+            start: workdayStart?.date,
             lastFired: nil,
             calendar: calendar
         ) ?? false
 
-        if alreadyPassedToday {
+        if passed {
             UserDefaults.standard.set(Date(), forKey: workdayEndLastFiredKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: workdayEndLastFiredKey)
         }
-
-        refresh()
     }
 
     private func endWorkdayIfDue(active: (Date, String)?) {
-        guard active != nil, let end = workdayEnd else {
+        guard active != nil, let rule = workdayEndRule else {
             return
         }
 
         let lastFired = UserDefaults.standard.object(forKey: workdayEndLastFiredKey) as? Date
 
-        guard end.shouldFire(now: Date(), lastFired: lastFired, calendar: calendar) else {
+        guard rule.shouldFire(now: Date(), start: workdayStart?.date, lastFired: lastFired, calendar: calendar) else {
             return
         }
 

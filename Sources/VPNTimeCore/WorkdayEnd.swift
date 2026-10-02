@@ -26,16 +26,34 @@ public struct WorkdayEnd: Hashable {
     }
 
     public func shouldFire(now: Date, lastFired: Date?, calendar: Calendar) -> Bool {
-        guard let trigger = calendar.date(
-            bySettingHour: hour,
-            minute: minute,
-            second: 0,
-            of: now
-        ) else {
-            return false
-        }
+        WorkdayEndRule.fixed(self).shouldFire(now: now, start: nil, lastFired: lastFired, calendar: calendar)
+    }
+}
 
-        if now < trigger {
+public enum WorkdayEndRule: Hashable {
+    case fixed(WorkdayEnd)
+    case afterStart(minutes: Int)
+
+    public var label: String {
+        switch self {
+        case .fixed(let end):
+            return end.label
+        case .afterStart(let minutes):
+            return hoursMinutes(minutes * 60) + " od startu"
+        }
+    }
+
+    public func trigger(now: Date, start: Date?, calendar: Calendar) -> Date? {
+        switch self {
+        case .fixed(let end):
+            return calendar.date(bySettingHour: end.hour, minute: end.minute, second: 0, of: now)
+        case .afterStart(let minutes):
+            return start?.addingTimeInterval(TimeInterval(minutes * 60))
+        }
+    }
+
+    public func shouldFire(now: Date, start: Date?, lastFired: Date?, calendar: Calendar) -> Bool {
+        guard let trigger = trigger(now: now, start: start, calendar: calendar), now >= trigger else {
             return false
         }
 

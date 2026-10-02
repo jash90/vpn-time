@@ -66,3 +66,52 @@ final class WorkdayEndTests: XCTestCase {
         XCTAssertNil(WorkdayEnd(minutesOfDay: 1440))
     }
 }
+
+final class WorkdayEndRuleTests: XCTestCase {
+    private let calendar = Calendar.vpnTimeISO
+    private let rule = WorkdayEndRule.afterStart(minutes: 480)
+
+    private func date(_ string: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        return formatter.date(from: string)!
+    }
+
+    func testAfterStartFiresOnceTheDurationHasPassed() {
+        let start = date("2026-10-02 08:12:00")
+
+        XCTAssertFalse(rule.shouldFire(
+            now: date("2026-10-02 16:11:59"), start: start, lastFired: nil, calendar: calendar
+        ))
+        XCTAssertTrue(rule.shouldFire(
+            now: date("2026-10-02 16:12:00"), start: start, lastFired: nil, calendar: calendar
+        ))
+    }
+
+    func testAfterStartNeedsAStart() {
+        XCTAssertFalse(rule.shouldFire(
+            now: date("2026-10-02 23:00:00"), start: nil, lastFired: nil, calendar: calendar
+        ))
+    }
+
+    func testAfterStartFiresOnlyOnceADay() {
+        XCTAssertFalse(rule.shouldFire(
+            now: date("2026-10-02 17:00:00"),
+            start: date("2026-10-02 08:00:00"),
+            lastFired: date("2026-10-02 16:00:10"),
+            calendar: calendar
+        ))
+    }
+
+    func testFixedRuleMatchesTheStruct() {
+        let fixed = WorkdayEndRule.fixed(WorkdayEnd(hour: 17, minute: 0))
+
+        XCTAssertTrue(fixed.shouldFire(
+            now: date("2026-10-02 17:00:00"), start: nil, lastFired: nil, calendar: calendar
+        ))
+        XCTAssertEqual(fixed.label, "17:00")
+        XCTAssertEqual(rule.label, "8h 00m od startu")
+    }
+}
