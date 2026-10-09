@@ -11,6 +11,14 @@ struct UpdateError: LocalizedError {
     }
 }
 
+enum CheckOutcome {
+    case upToDate
+    case available(AvailableUpdate)
+    // A newer release that cannot be installed from here because its archive
+    // or the archive's digest is missing.
+    case unverifiable(tag: String, pageURL: URL?)
+}
+
 // Checks GitHub Releases for a newer build and installs it. Nothing is swapped
 // in unless the archive matches the published sha256 digest and the unpacked
 // bundle is signed by our Developer ID team.
@@ -35,8 +43,8 @@ final class Updater {
         AppVersion(currentVersionString) ?? AppVersion("0")!
     }
 
-    // Calls back on the main thread with the update, nil when up to date, or an error.
-    func check(completion: @escaping (Result<AvailableUpdate?, Error>) -> Void) {
+    // Calls back on the main thread with what the latest release means for this build.
+    func check(completion: @escaping (Result<CheckOutcome, Error>) -> Void) {
         var request = URLRequest(url: Self.latestURL)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("VPNTime/\(currentVersionString)", forHTTPHeaderField: "User-Agent")
@@ -44,20 +52,19 @@ final class Updater {
         let current = currentVersion
 
         session.dataTask(with: request) { data, response, error in
-            let result: Result<AvailableUpdate?, Error>
+            let result: Result<CheckOutcome, Error>
 
             if let error {
                 result = .failure(UpdateError("Brak połączenia z GitHubem: \(error.localizedDescription)"))
             } else if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
                 result = .failure(UpdateError("GitHub odpowiedział kodem \(status)."))
             } else if let data, let release = try? JSONDecoder().decode(Release.self, from: data) {
-                if Update.isUnverifiable(release: release, currentVersion: current) {
-                    result = .failure(UpdateError(
-                        "Wersja \(release.tagName) jest dostępna, ale nie da się jej zweryfikować "
-                            + "(brak archiwum lub sumy SHA-256) — zainstaluj ją ręcznie."
-                    ))
+                if let update = Update.evaluate(release: release, currentVersion: current) {
+                    result = .success(.available(update))
+                } else if Update.isUnverifiable(release: release, currentVersion: current) {
+                    result = .success(.unverifiable(tag: release.tagName, pageURL: release.htmlURL))
                 } else {
-                    result = .success(Update.evaluate(release: release, currentVersion: current))
+                    result = .success(.upToDate)
                 }
             } else {
                 result = .failure(UpdateError("Nie udało się odczytać odpowiedzi GitHuba."))

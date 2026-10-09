@@ -455,7 +455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(Date(), forKey: self.updateLastCheckKey)
 
             switch result {
-            case .success(let update?):
+            case .success(.available(let update)):
                 appLog("update: \(update.tag) available")
                 self.updateState = .available(update)
                 self.refresh()
@@ -463,12 +463,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if manual {
                     self.offerUpdate()
                 }
-            case .success(nil):
+            case .success(.upToDate):
                 self.updateState = .idle
                 self.refresh()
 
                 if manual {
                     self.alert("Masz najnowszą wersję (\(self.updater.currentVersionString)).")
+                }
+            case .success(.unverifiable(let tag, let pageURL)):
+                // Never installed from here, so the quiet check only logs it.
+                appLog("update: \(tag) available but unverifiable (no archive or sha256 digest)")
+                self.updateState = .idle
+                self.refresh()
+
+                if manual {
+                    self.offerManualInstall(tag: tag, pageURL: pageURL)
                 }
             case .failure(let error):
                 appLog("update: check failed: \(error.localizedDescription)")
@@ -517,6 +526,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateState = .idle
             self?.refresh()
             self?.alert("Nie udało się zainstalować aktualizacji.", info: error.localizedDescription)
+        }
+    }
+
+    private func offerManualInstall(tag: String, pageURL: URL?) {
+        let alert = NSAlert()
+        alert.messageText = "Dostępna wersja \(tag), ale nie da się jej zweryfikować"
+        alert.informativeText = "W wydaniu brakuje archiwum aplikacji albo jego sumy SHA-256, więc "
+            + "VPN Time nie zainstaluje go sam. Pobierz je ręcznie ze strony wydania."
+        alert.addButton(withTitle: "Otwórz stronę wydania")
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+
+        let page = pageURL ?? URL(string: "https://github.com/jash90/vpn-time/releases")!
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(page)
         }
     }
 
