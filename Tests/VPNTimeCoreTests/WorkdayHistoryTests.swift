@@ -119,3 +119,56 @@ final class WorkdayHistoryTests: XCTestCase {
         """)
     }
 }
+
+final class WorkdayTotalsTests: XCTestCase {
+    private func date(_ string: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        return formatter.date(from: string)!
+    }
+
+    private func record(_ day: String, _ start: String, _ end: String?) -> WorkdayRecord {
+        WorkdayRecord(
+            day: day,
+            start: date("\(day) \(start):00"),
+            end: end.map { date("\(day) \($0):00") },
+            source: .activity
+        )
+    }
+
+    // Friday 2026-10-09 14:00; the ISO week starts on Monday 2026-10-05.
+    private lazy var now = date("2026-10-09 14:00:00")
+    private lazy var records = [
+        record("2026-10-09", "08:00", "16:00"),   // today, end still ahead: 6h so far
+        record("2026-10-08", "08:00", "15:30"),   // 7h 30m
+        record("2026-10-05", "09:00", "17:00"),   // 8h, Monday of this week
+        record("2026-10-02", "08:00", "16:00"),   // last week, this month
+        record("2026-10-01", "08:00", nil),       // no end: not counted
+        record("2026-09-30", "08:00", "16:00"),   // last month
+    ]
+
+    func testTodayCountsOnlyUpToNow() {
+        XCTAssertEqual(WorkdayTotals(now: now).total(.today, records: records), 6 * 3600)
+    }
+
+    func testWeekAndMonth() {
+        let totals = WorkdayTotals(now: now)
+
+        XCTAssertEqual(totals.total(.week, records: records), (6 * 60 + 7 * 60 + 30 + 8 * 60) * 60)
+        XCTAssertEqual(totals.total(.month, records: records), (6 * 60 + 7 * 60 + 30 + 8 * 60 + 8 * 60) * 60)
+    }
+
+    func testTodayStoppedEarlierCountsUpToTheStop() {
+        let stopped = [record("2026-10-09", "08:00", "11:15")]
+
+        XCTAssertEqual(WorkdayTotals(now: now).total(.today, records: stopped), 3 * 3600 + 15 * 60)
+    }
+
+    func testTodayWithoutEndCountsUpToNow() {
+        let open = [record("2026-10-09", "13:00", nil)]
+
+        XCTAssertEqual(WorkdayTotals(now: now).total(.today, records: open), 3600)
+    }
+}

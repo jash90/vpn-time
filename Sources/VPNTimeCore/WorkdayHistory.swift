@@ -188,3 +188,41 @@ public final class WorkdayHistory {
         return formatter
     }
 }
+
+public extension WorkdayRecord {
+    // Time worked as of `now`: a day still in progress (no end yet, or an end
+    // still ahead) counts up to now; a past day without an end counts as 0.
+    func worked(now: Date, calendar: Calendar) -> Int {
+        guard calendar.isDate(start, inSameDayAs: now) else {
+            return duration ?? 0
+        }
+
+        let until = min(end ?? now, now)
+        return max(0, Int(until.timeIntervalSince(start)))
+    }
+}
+
+public struct WorkdayTotals {
+    private let calendar: Calendar
+    private let now: Date
+
+    public init(calendar: Calendar = .vpnTimeISO, now: Date = Date()) {
+        self.calendar = calendar
+        self.now = now
+    }
+
+    public func total(_ bucket: Bucket, records: [WorkdayRecord]) -> Int {
+        records
+            .filter { record in
+                switch bucket {
+                case .today:
+                    return calendar.isDate(record.start, inSameDayAs: now)
+                case .week:
+                    return calendar.isDate(record.start, equalTo: now, toGranularity: .weekOfYear)
+                case .month:
+                    return calendar.isDate(record.start, equalTo: now, toGranularity: .month)
+                }
+            }
+            .reduce(0) { $0 + $1.worked(now: now, calendar: calendar) }
+    }
+}
