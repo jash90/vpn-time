@@ -122,6 +122,17 @@ public enum Update {
         )
     }
 
+    // A newer published release the updater refuses because its archive or
+    // the archive's digest is missing; worth telling apart from "up to date".
+    public static func isUnverifiable(release: Release, currentVersion: AppVersion) -> Bool {
+        guard !release.draft, !release.prerelease,
+              let version = AppVersion(release.tagName), version > currentVersion else {
+            return false
+        }
+
+        return evaluate(release: release, currentVersion: currentVersion) == nil
+    }
+
     public static func sha256(fromDigest digest: String?) -> String? {
         guard let digest, digest.hasPrefix("sha256:") else {
             return nil

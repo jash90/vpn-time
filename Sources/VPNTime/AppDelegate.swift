@@ -422,8 +422,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // The quiet daily check only changes the menu item; it never shows a dialog.
     private func checkForUpdatesIfDue() {
-        guard case .idle = updateState,
-              Update.isDue(lastCheck: UserDefaults.standard.object(forKey: updateLastCheckKey) as? Date, now: Date()) else {
+        switch updateState {
+        case .idle, .available:
+            break
+        case .checking, .installing:
+            return
+        }
+
+        guard Update.isDue(lastCheck: UserDefaults.standard.object(forKey: updateLastCheckKey) as? Date, now: Date()) else {
             return
         }
 
@@ -435,6 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startCheck(manual: Bool) {
+        let previous = updateState
         updateState = .checking(manual: manual)
         refresh()
 
@@ -465,7 +472,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             case .failure(let error):
                 appLog("update: check failed: \(error.localizedDescription)")
-                self.updateState = .idle
+                // A quiet check that fails (offline, say) keeps an update
+                // found earlier on offer.
+                if !manual, case .available = previous {
+                    self.updateState = previous
+                } else {
+                    self.updateState = .idle
+                }
                 self.refresh()
 
                 if manual {
@@ -498,8 +511,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateState = .installing
         refresh()
 
+        // A failed install goes back to a fresh check: the release may have
+        // been fixed or superseded in the meantime.
         updater.install(update) { [weak self] error in
-            self?.updateState = .available(update)
+            self?.updateState = .idle
             self?.refresh()
             self?.alert("Nie udało się zainstalować aktualizacji.", info: error.localizedDescription)
         }

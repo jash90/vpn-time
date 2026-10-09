@@ -51,7 +51,14 @@ final class Updater {
             } else if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
                 result = .failure(UpdateError("GitHub odpowiedział kodem \(status)."))
             } else if let data, let release = try? JSONDecoder().decode(Release.self, from: data) {
-                result = .success(Update.evaluate(release: release, currentVersion: current))
+                if Update.isUnverifiable(release: release, currentVersion: current) {
+                    result = .failure(UpdateError(
+                        "Wersja \(release.tagName) jest dostępna, ale nie da się jej zweryfikować "
+                            + "(brak archiwum lub sumy SHA-256) — zainstaluj ją ręcznie."
+                    ))
+                } else {
+                    result = .success(Update.evaluate(release: release, currentVersion: current))
+                }
             } else {
                 result = .failure(UpdateError("Nie udało się odczytać odpowiedzi GitHuba."))
             }
