@@ -25,7 +25,12 @@ fi
 
 ./build.sh
 
-if ! codesign -dv "$APP" 2>&1 | grep -q 'TeamIdentifier=H2X8YGN869'; then
+# Read the signature into a variable first: with pipefail, `codesign | grep -q`
+# can fail when grep exits early and codesign is killed by SIGPIPE, which
+# rejected correctly signed builds.
+SIGNATURE="$(codesign -dv "$APP" 2>&1)"
+
+if [[ "$SIGNATURE" != *'TeamIdentifier=H2X8YGN869'* ]]; then
   echo "error: bundle is not Developer ID signed — notarisation would be rejected" >&2
   exit 1
 fi
