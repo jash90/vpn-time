@@ -78,12 +78,6 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
         endNow?()
     }
 
-    // Closing the window is not an answer: the question comes back on the
-    // next check while the countdown keeps running.
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        false
-    }
-
     private func build() {
         message.font = .systemFont(ofSize: 13, weight: .semibold)
         message.preferredMaxLayoutWidth = 320
@@ -103,6 +97,8 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
             views: [message, countdown, TimePickerPanel.buttons([end, working])],
             delegate: self
         )
+        // No close button: only the two answers (or the countdown) end it.
+        panel.styleMask.remove(.closable)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         self.panel = panel
