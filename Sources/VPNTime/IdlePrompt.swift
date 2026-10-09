@@ -12,8 +12,14 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
     private var keepWorking: (() -> Void)?
     private var endNow: (() -> Void)?
 
+    private let headline = NSTextField(labelWithString: "Czy nadal pracujesz?")
     private let message = NSTextField(wrappingLabelWithString: "")
-    private let countdown = NSTextField(labelWithString: "")
+    private let remaining = NSTextField(labelWithString: "")
+    private let countdown = NSTextField(wrappingLabelWithString: "")
+
+    // Width of the text column, and of the whole window around it.
+    private static let textWidth: CGFloat = 400
+    private static let windowWidth: CGFloat = 540
 
     private lazy var clock: DateFormatter = {
         let formatter = DateFormatter()
@@ -44,8 +50,9 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
         }
 
         let idle = Int(Date().timeIntervalSince(idleSince))
-        message.stringValue = "Brak aktywności od \(clock.string(from: idleSince)) (\(hoursMinutes(idle))). "
-            + "Czy nadal pracujesz?"
+        message.stringValue = "Od \(clock.string(from: idleSince)) nie było aktywności klawiatury ani myszy "
+            + "(\(hoursMinutes(idle)))."
+        countdown.stringValue = "Bez odpowiedzi czas pracy zatrzyma się na \(clock.string(from: stopAt))."
         tick()
 
         timer?.invalidate()
@@ -64,8 +71,7 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
 
     private func tick() {
         let left = max(0, Int(deadline.timeIntervalSinceNow.rounded(.up)))
-        countdown.stringValue = String(format: "Bez odpowiedzi czas pracy zatrzyma się na %@ za %d:%02d.",
-                                       clock.string(from: stopAt), left / 60, left % 60)
+        remaining.stringValue = String(format: "%d:%02d", left / 60, left % 60)
     }
 
     @objc private func working() {
@@ -79,12 +85,41 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
     }
 
     private func build() {
-        message.font = .systemFont(ofSize: 13, weight: .semibold)
-        message.preferredMaxLayoutWidth = 320
+        headline.font = .systemFont(ofSize: 18, weight: .semibold)
+        message.font = .systemFont(ofSize: 13)
         message.setAccessibilityIdentifier("idleMessage")
-        countdown.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        remaining.font = .monospacedDigitSystemFont(ofSize: 26, weight: .semibold)
+        remaining.setAccessibilityIdentifier("idleRemaining")
+        countdown.font = .systemFont(ofSize: 12)
         countdown.textColor = .secondaryLabelColor
         countdown.setAccessibilityIdentifier("idleCountdown")
+
+        message.preferredMaxLayoutWidth = Self.textWidth
+        message.widthAnchor.constraint(equalToConstant: Self.textWidth).isActive = true
+
+        let timer = NSStackView(views: [remaining, countdown])
+        timer.orientation = .horizontal
+        timer.alignment = .centerY
+        timer.spacing = 12
+        countdown.preferredMaxLayoutWidth = Self.textWidth - 90
+
+        let text = NSStackView(views: [headline, message, timer])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 10
+        text.setCustomSpacing(16, after: message)
+        text.widthAnchor.constraint(equalToConstant: Self.textWidth).isActive = true
+
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 34, weight: .regular))
+        icon.contentTintColor = .controlAccentColor
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+
+        let body = NSStackView(views: [icon, text])
+        body.orientation = .horizontal
+        body.alignment = .top
+        body.spacing = 18
 
         let working = NSButton(title: "Pracuję", target: self, action: #selector(working))
         working.keyEquivalent = "\r"
@@ -92,13 +127,40 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
         let end = NSButton(title: "Zakończ pracę", target: self, action: #selector(end))
         end.setAccessibilityIdentifier("idleEndWork")
 
-        let panel = TimePickerPanel.panel(
-            title: "Czy nadal pracujesz?",
-            views: [message, countdown, TimePickerPanel.buttons([end, working])],
-            delegate: self
-        )
+        for button in [working, end] {
+            button.controlSize = .large
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+        }
+
+        let buttons = NSStackView()
+        buttons.orientation = .horizontal
+        buttons.spacing = 10
+        buttons.setViews([end, working], in: .trailing)
+
+        let content = NSStackView(views: [body, buttons])
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 22
+        content.edgeInsets = NSEdgeInsets(top: 34, left: 28, bottom: 24, right: 28)
+        content.widthAnchor.constraint(equalToConstant: Self.windowWidth).isActive = true
+        buttons.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -56).isActive = true
+
         // No close button: only the two answers (or the countdown) end it.
-        panel.styleMask.remove(.closable)
+        let panel = NSPanel(
+            contentRect: .zero,
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isMovableByWindowBackground = true
+        panel.level = .floating
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
+        panel.contentView = content
+        content.layoutSubtreeIfNeeded()
+        panel.setContentSize(NSSize(width: Self.windowWidth, height: content.fittingSize.height))
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         self.panel = panel
