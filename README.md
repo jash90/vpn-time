@@ -139,6 +139,34 @@ Trzy rzeczy warto wiedzieć:
 Dokładność to ±15 s (interwał timera apki). Wynik każdej próby zamknięcia ląduje
 w `~/Library/Logs/VPNTime.log`.
 
+## Aktualizacje
+
+Na dole menu jest wiersz `Wersja 1.3.0` i pozycja **Sprawdź aktualizacje…**.
+Apka pyta GitHuba o najnowsze wydanie (`jash90/vpn-time`, endpoint
+`releases/latest`). Ręczne sprawdzenie kończy się zawsze oknem: „masz najnowszą
+wersję", błąd albo propozycja instalacji z notatkami wydania. Oprócz tego raz na
+24 h apka sprawdza po cichu; gdy coś znajdzie, pozycja zmienia się na
+`Zainstaluj aktualizację v1.4.0…`. Bez kliknięcia nic się nie instaluje.
+
+Instalacja:
+
+1. Pobranie `VPN-Time-<tag>.zip` z wydania.
+2. Porównanie SHA-256 archiwum z sumą, którą GitHub publikuje przy pliku.
+   Wydanie bez tej sumy w ogóle nie jest proponowane.
+3. Rozpakowanie i sprawdzenie podpisu: Developer ID zespołu `H2X8YGN869`,
+   identyfikator `com.redge.vpntimebar`.
+4. Wersja w pobranym `Info.plist` musi być wyższa od bieżącej.
+5. Apka uruchamia `update-helper.sh` (ze swojego bundla) i się zamyka. Helper
+   czeka na jej koniec, podmienia bundle (stary trafia na bok i wraca, jeśli
+   podmiana się nie uda), instaluje `vpn-track.sh` i `vpn-report.sh` z nowego
+   bundla do `~/.local/bin`, przeładowuje agenta pollera i uruchamia apkę.
+
+Każdy krok ląduje w `~/Library/Logs/VPNTime.log`. Aktualizacja działa tylko
+tam, gdzie apka może pisać do folderu nadrzędnego (domyślnie `~/Applications`).
+
+`release.sh` odmawia wydania, gdy tag nie zgadza się z
+`CFBundleShortVersionString` w `bundle/Info.plist`.
+
 ## Aliasy
 
 ```

@@ -14,6 +14,15 @@ PROFILE="${NOTARY_PROFILE:-vpn-time}"
 APP="build/VPN Time.app"
 ZIP="build/VPN-Time-$VERSION.zip"
 
+PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' bundle/Info.plist)"
+
+# The in-app updater compares the release tag with the bundle version; a
+# mismatch would offer the same release forever or never offer it at all.
+if [ "$VERSION" != "v$PLIST_VERSION" ]; then
+  echo "error: tag $VERSION does not match CFBundleShortVersionString $PLIST_VERSION in bundle/Info.plist" >&2
+  exit 1
+fi
+
 ./build.sh
 
 if ! codesign -dv "$APP" 2>&1 | grep -q 'TeamIdentifier=H2X8YGN869'; then

@@ -13,7 +13,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let workdayStartManualKey = "workdayStartManual"
     private let workdayStartDetectionKey = "workdayStartDetection"
     private let workdayEndManualKey = "workdayEndManual"
+    private let updateLastCheckKey = "updateLastCheck"
     private var timer: Timer?
+    private let updater = Updater()
+    private var updateState = UpdateState.idle
+
+    private enum UpdateState {
+        case idle
+        case checking(manual: Bool)
+        case available(AvailableUpdate)
+        case installing
+    }
     private var workdayStart: WorkdayStart?
     private lazy var detector = WorkdayStartDetector(calendar: calendar)
     private lazy var history = WorkdayHistory(calendar: calendar)
@@ -59,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rebuildMenu(sessions: sessions, active: active)
         endWorkdayIfDue(active: active)
+        checkForUpdatesIfDue()
     }
 
     private func rebuildMenu(sessions: [Session], active: (Date, String)?) {
@@ -103,6 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(action("Pokaż plik z historią", #selector(revealCSV)))
         menu.addItem(action("Odśwież", #selector(refresh)))
+        menu.addItem(.separator())
+        menu.addItem(disabled("Wersja \(updater.currentVersionString)"))
+        menu.addItem(updateItem())
         menu.addItem(.separator())
         menu.addItem(action("Zakończ", #selector(quit)))
 
@@ -320,11 +334,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The wait watches the process list rather than Tunnelblick's own scripting
     // state, which cannot be counted or iterated over from AppleScript.
     private func quitTunnelblick() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        DispatchQueue.global(qos: .utility).async {
             let disconnect = Self.runScript("tell application \"Tunnelblick\" to disconnect all")
 
             guard disconnect.isEmpty else {
-                self?.log("workday end: disconnect failed: \(disconnect)")
+                appLog("workday end: disconnect failed: \(disconnect)")
                 return
             }
 
@@ -339,9 +353,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let quit = Self.runScript("tell application \"Tunnelblick\" to quit")
 
             if quit.isEmpty {
-                self?.log("workday end: disconnected in \(waited)s, still up: \(stuck), Tunnelblick closed")
+                appLog("workday end: disconnected in \(waited)s, still up: \(stuck), Tunnelblick closed")
             } else {
-                self?.log("workday end: disconnected in \(waited)s, quit failed: \(quit)")
+                appLog("workday end: disconnected in \(waited)s, quit failed: \(quit)")
             }
         }
     }
@@ -393,21 +407,110 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return message.isEmpty ? "exit \(process.terminationStatus)" : message
     }
 
-    private func log(_ message: String) {
-        let path = NSString(string: "~/Library/Logs/VPNTime.log").expandingTildeInPath
-        let line = ISO8601DateFormatter().string(from: Date()) + " " + message + "\n"
+    private func updateItem() -> NSMenuItem {
+        switch updateState {
+        case .idle:
+            return action("Sprawdź aktualizacje…", #selector(checkForUpdates))
+        case .checking:
+            return disabled("Sprawdzanie aktualizacji…")
+        case .available(let update):
+            return action("Zainstaluj aktualizację \(update.tag)…", #selector(offerUpdate))
+        case .installing:
+            return disabled("Pobieranie aktualizacji…")
+        }
+    }
 
-        guard let data = line.data(using: .utf8) else {
+    // The quiet daily check only changes the menu item; it never shows a dialog.
+    private func checkForUpdatesIfDue() {
+        guard case .idle = updateState,
+              Update.isDue(lastCheck: UserDefaults.standard.object(forKey: updateLastCheckKey) as? Date, now: Date()) else {
             return
         }
 
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            try? handle.close()
-        } else {
-            try? data.write(to: URL(fileURLWithPath: path))
+        startCheck(manual: false)
+    }
+
+    @objc private func checkForUpdates() {
+        startCheck(manual: true)
+    }
+
+    private func startCheck(manual: Bool) {
+        updateState = .checking(manual: manual)
+        refresh()
+
+        updater.check { [weak self] result in
+            guard let self else {
+                return
+            }
+
+            // Stored after every finished check, failed ones too, so being
+            // offline does not trigger a new check on every refresh.
+            UserDefaults.standard.set(Date(), forKey: self.updateLastCheckKey)
+
+            switch result {
+            case .success(let update?):
+                appLog("update: \(update.tag) available")
+                self.updateState = .available(update)
+                self.refresh()
+
+                if manual {
+                    self.offerUpdate()
+                }
+            case .success(nil):
+                self.updateState = .idle
+                self.refresh()
+
+                if manual {
+                    self.alert("Masz najnowszą wersję (\(self.updater.currentVersionString)).")
+                }
+            case .failure(let error):
+                appLog("update: check failed: \(error.localizedDescription)")
+                self.updateState = .idle
+                self.refresh()
+
+                if manual {
+                    self.alert("Nie udało się sprawdzić aktualizacji.", info: error.localizedDescription)
+                }
+            }
         }
+    }
+
+    @objc private func offerUpdate() {
+        guard case .available(let update) = updateState else {
+            return
+        }
+
+        let notes = update.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shortNotes = notes.count > 600 ? String(notes.prefix(600)) + "…" : notes
+        let alert = NSAlert()
+        alert.messageText = "Dostępna wersja \(update.tag)"
+        alert.informativeText = "Zainstalowana: \(updater.currentVersionString)."
+            + (shortNotes.isEmpty ? "" : "\n\n" + shortNotes)
+            + "\n\nPo instalacji aplikacja uruchomi się ponownie."
+        alert.addButton(withTitle: "Zainstaluj")
+        alert.addButton(withTitle: "Później")
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        updateState = .installing
+        refresh()
+
+        updater.install(update) { [weak self] error in
+            self?.updateState = .available(update)
+            self?.refresh()
+            self?.alert("Nie udało się zainstalować aktualizacji.", info: error.localizedDescription)
+        }
+    }
+
+    private func alert(_ message: String, info: String = "") {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = info
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     private func disabled(_ title: String) -> NSMenuItem {

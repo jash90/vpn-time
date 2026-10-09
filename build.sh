@@ -14,6 +14,12 @@ cp bundle/Info.plist "$APP/Contents/Info.plist"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp .build/release/VPNTime "$APP/Contents/MacOS/vpntime"
 
+# Shipped inside the bundle so an in-app update can refresh the tracker scripts
+# in ~/.local/bin and swap the bundle once the app has quit.
+mkdir -p "$APP/Contents/Resources/scripts"
+install -m 755 scripts/vpn-track.sh scripts/vpn-report.sh "$APP/Contents/Resources/scripts/"
+install -m 755 bundle/update-helper.sh "$APP/Contents/Resources/update-helper.sh"
+
 # A Developer ID signature gives the app a stable code identity. TCC ties the
 # Apple Events permission used to close Tunnelblick to that identity, so an
 # ad-hoc build has to be re-authorised after every rebuild. Falls back to ad-hoc

@@ -11,6 +11,7 @@
 # 2026-10-02: 'Praca …' after the connection line, 'Początek pracy' and the
 # detection toggle before 'Koniec pracy' — 18 entries. Recovered entries are
 # 1-7 and 9-10 (the autostart toggle).
+# 2026-10-09: version line and the update item before 'Zakończ' — 21 entries.
 set -uo pipefail
 
 read_menu() {
@@ -72,12 +73,15 @@ check 14 '^SEP$'
 check 15 '^Pokaż plik z historią$'
 check 16 '^Odśwież$'
 check 17 '^SEP$'
-check 18 '^Zakończ$'
+check 18 '^Wersja [0-9]+(\.[0-9]+)*$'
+check 19 '^(Sprawdź aktualizacje…|Sprawdzanie aktualizacji…|Zainstaluj aktualizację v[0-9.]+…|Pobieranie aktualizacji…)$'
+check 20 '^SEP$'
+check 21 '^Zakończ$'
 
 count="$(printf '%s\n' "$menu" | grep -c .)"
 
-if [ "$count" -ne 18 ]; then
-  echo "FAIL: expected 18 menu entries, got $count"
+if [ "$count" -ne 21 ]; then
+  echo "FAIL: expected 21 menu entries, got $count"
   fail=1
 fi
 
