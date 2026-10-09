@@ -242,25 +242,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openWorkdayForm() {
-        let sessions = store.sessions()
-        let active = store.activeSession()
-        let detected = detector.resolve(
+        workdayForm.show(
+            settings: currentSettings,
+            detected: detectedStart(),
+            save: { [weak self] settings in self?.applyWorkdaySettings(settings) }
+        )
+    }
+
+    private var currentSettings: WorkdaySettings {
+        WorkdaySettings(manualStart: manualStart, detectionEnabled: detectionEnabled, endRule: workdayEndRule)
+    }
+
+    // What detection alone finds today, shown next to "Automatycznie".
+    private func detectedStart() -> WorkdayStart? {
+        detector.resolve(
             now: Date(),
             manual: nil,
             detectionEnabled: true,
             streaks: store.activityStreaks(),
-            vpnStarts: vpnStarts(sessions: sessions, active: active)
-        )
-        let settings = WorkdaySettings(
-            manualStart: manualStart,
-            detectionEnabled: detectionEnabled,
-            endRule: workdayEndRule
-        )
-
-        workdayForm.show(
-            settings: settings,
-            detected: detected,
-            save: { [weak self] settings in self?.applyWorkdaySettings(settings) }
+            vpnStarts: vpnStarts(sessions: store.sessions(), active: store.activeSession())
         )
     }
 
@@ -384,6 +384,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
         workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
         markWorkdayEndFiredIfPassed()
+        // An open "Czas pracy" form would otherwise save its stale start over
+        // the one just set, and drop today's end with it.
+        workdayForm.reloadIfOpen(settings: currentSettings, detected: detectedStart())
         refresh()
     }
 

@@ -59,6 +59,17 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
         }
     }
 
+    // Shows the stored settings again in an open form, after today's row was
+    // saved in "Dni pracy".
+    func reloadIfOpen(settings: WorkdaySettings, detected: WorkdayStart?) {
+        guard let panel, panel.isVisible else {
+            return
+        }
+
+        self.detected = detected
+        load(settings)
+    }
+
     // MARK: - Today
 
     private func load(_ settings: WorkdaySettings) {
