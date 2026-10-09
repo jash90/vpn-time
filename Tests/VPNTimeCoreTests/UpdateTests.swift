@@ -86,6 +86,14 @@ final class UpdateTests: XCTestCase {
         XCTAssertNil(Update.evaluate(release: try release(tag: "latest"), currentVersion: current))
     }
 
+    func testTellsAnUnverifiableNewerReleaseApartFromBeingUpToDate() throws {
+        XCTAssertTrue(Update.isUnverifiable(release: try release(digest: .some(nil)), currentVersion: current))
+        XCTAssertTrue(Update.isUnverifiable(release: try release(assetName: "Source.zip"), currentVersion: current))
+        XCTAssertFalse(Update.isUnverifiable(release: try release(), currentVersion: current))
+        XCTAssertFalse(Update.isUnverifiable(release: try release(tag: "v1.2.0", digest: .some(nil)), currentVersion: current))
+        XCTAssertFalse(Update.isUnverifiable(release: try release(prerelease: true, digest: .some(nil)), currentVersion: current))
+    }
+
     func testCheckIsDueOncePerDay() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
