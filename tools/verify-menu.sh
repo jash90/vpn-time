@@ -12,6 +12,8 @@
 # detection toggle before 'Koniec pracy' — 18 entries. Recovered entries are
 # 1-7 and 9-10 (the autostart toggle).
 # 2026-10-09: version line and the update item before 'Zakończ' — 21 entries.
+# 2026-10-10: 'Dni pracy…' after 'Koniec pracy', and a stopped workday shows
+# 'Praca 08:00–14:05 (…)' — 22 entries.
 set -uo pipefail
 
 read_menu() {
@@ -63,25 +65,26 @@ check 4  '^Ten tydzień:  [0-9]+h [0-9]{2}m$'
 check 5  '^Ten miesiąc: [0-9]+h [0-9]{2}m$'
 check 6  '^SEP$'
 check 7  '^(● Połączony \(.+\) od [0-9]{2}:[0-9]{2}|○ Rozłączony)$'
-check 8  '^(Praca od [0-9]{2}:[0-9]{2} \((ręcznie|VPN|aktywność|bez VPN)\) · [0-9]+h [0-9]{2}m|Praca: nie wykryto)$'
+check 8  '^(Praca od [0-9]{2}:[0-9]{2}|Praca [0-9]{2}:[0-9]{2}–[0-9]{2}:[0-9]{2}) \((ręcznie|VPN|aktywność|bez VPN|poprawiony)\) · [0-9]+h [0-9]{2}m$|^Praca: nie wykryto$'
 check 9  '^SEP$'
 check 10 '^Uruchamiaj przy logowaniu$'
 check 11 '^Początek pracy: (auto|ręcznie [0-9]{2}:[0-9]{2})$'
 check 12 '^Wykrywaj początek pracy$'
 check 13 '^Koniec pracy: (wyłączony|[0-9]{2}:[0-9]{2}|[0-9]+h [0-9]{2}m od startu)$'
-check 14 '^SEP$'
-check 15 '^Pokaż plik z historią$'
-check 16 '^Odśwież$'
-check 17 '^SEP$'
-check 18 '^Wersja [0-9]+(\.[0-9]+)*$'
-check 19 '^(Sprawdź aktualizacje…|Sprawdzanie aktualizacji…|Zainstaluj aktualizację v[0-9.]+…|Pobieranie aktualizacji…)$'
-check 20 '^SEP$'
-check 21 '^Zakończ$'
+check 14 '^Dni pracy…$'
+check 15 '^SEP$'
+check 16 '^Pokaż plik z historią$'
+check 17 '^Odśwież$'
+check 18 '^SEP$'
+check 19 '^Wersja [0-9]+(\.[0-9]+)*$'
+check 20 '^(Sprawdź aktualizacje…|Sprawdzanie aktualizacji…|Zainstaluj aktualizację v[0-9.]+…|Pobieranie aktualizacji…)$'
+check 21 '^SEP$'
+check 22 '^Zakończ$'
 
 count="$(printf '%s\n' "$menu" | grep -c .)"
 
-if [ "$count" -ne 21 ]; then
-  echo "FAIL: expected 21 menu entries, got $count"
+if [ "$count" -ne 22 ]; then
+  echo "FAIL: expected 22 menu entries, got $count"
   fail=1
 fi
 

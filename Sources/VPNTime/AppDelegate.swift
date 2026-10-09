@@ -3,7 +3,12 @@ import VPNTimeCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let store = VPNStore()
+    private let store = VPNStore(
+        csvPath: dataPath(".vpn-sessions.csv"),
+        statePath: dataPath(".vpn-sessions.state"),
+        activityCSVPath: dataPath(".vpn-activity.csv"),
+        activityStatePath: dataPath(".vpn-activity.state")
+    )
     private let calendar = Calendar.vpnTimeISO
     private let agentLabel = "com.redge.vpntimebar"
     private let workdayEndKey = "workdayEndMinutes"
@@ -14,7 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let workdayStartDetectionKey = "workdayStartDetection"
     private let workdayEndManualKey = "workdayEndManual"
     private let updateLastCheckKey = "updateLastCheck"
+    private let idleThresholdKey = "idleThresholdSeconds"
+    private let idleGraceKey = "idleGraceSeconds"
     private var timer: Timer?
+    private var idleTimer: Timer?
+    private var idlePromptState: IdleWatch.Prompt?
+    private var idleAnsweredAt: Date?
+    private let idlePrompt = IdlePrompt()
     private let updater = Updater()
     private var updateState = UpdateState.idle
 
@@ -26,8 +37,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private var workdayStart: WorkdayStart?
     private lazy var detector = WorkdayStartDetector(calendar: calendar)
-    private lazy var history = WorkdayHistory(calendar: calendar)
-    private lazy var workdayForm = WorkdayForm(calendar: calendar, history: history)
+    private lazy var history = WorkdayHistory(path: Self.dataPath(".vpn-workdays.csv"), calendar: calendar)
+    private lazy var workdayForm = WorkdayForm(calendar: calendar)
+    private lazy var workdayDays = WorkdayDays(calendar: calendar, history: history)
+
+    // The data files live in the home folder. VPNTIME_DATA_DIR points the app
+    // at another folder, so it can be exercised without touching real data.
+    private static func dataPath(_ name: String) -> String {
+        let folder = ProcessInfo.processInfo.environment["VPNTIME_DATA_DIR"] ?? NSHomeDirectory()
+        return (folder as NSString).appendingPathComponent(name)
+    }
 
     private var agentPath: String {
         NSString(string: "~/Library/LaunchAgents/\(agentLabel).plist").expandingTildeInPath
@@ -48,6 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+        // Common modes, so the countdown also runs while a menu or alert is open.
+        let idleTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            self?.watchIdle()
+        }
+        RunLoop.main.add(idleTimer, forMode: .common)
+        self.idleTimer = idleTimer
     }
 
     @objc private func refresh() {
@@ -68,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         rebuildMenu(sessions: sessions, active: active)
+        workdayDays.refreshIfOpen()
         endWorkdayIfDue(active: active)
         checkForUpdatesIfDue()
     }
@@ -110,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detection.state = detectionEnabled ? .on : .off
         menu.addItem(detection)
         menu.addItem(workdayEndItem())
+        menu.addItem(action("Dni pracy…", #selector(openWorkdayDays)))
 
         menu.addItem(.separator())
         menu.addItem(action("Pokaż plik z historią", #selector(revealCSV)))
@@ -157,8 +184,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let source = WorkdayForm.label(for: start)
+
+        if let end = stoppedAt {
+            let worked = max(0, Int(end.timeIntervalSince(start.date)))
+            return "Praca \(clock.string(from: start.date))–\(clock.string(from: end)) (\(source)) · " + hoursMinutes(worked)
+        }
+
         let worked = max(0, Int(Date().timeIntervalSince(start.date)))
         return "Praca od \(clock.string(from: start.date)) (\(source)) · " + hoursMinutes(worked)
+    }
+
+    // Today's end set by hand (the days table, or an unanswered inactivity
+    // question) once it has passed: the workday is over and its counter stops.
+    private var stoppedAt: Date? {
+        today(workdayEndManualKey).flatMap { $0 <= Date() ? $0 : nil }
     }
 
     // Only today's manual values count; older ones are left in the defaults
@@ -221,9 +260,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         workdayForm.show(
             settings: settings,
             detected: detected,
-            save: { [weak self] settings in self?.applyWorkdaySettings(settings) },
-            saveToday: { [weak self] start, end in self?.applyToday(start: start, end: end) }
+            save: { [weak self] settings in self?.applyWorkdaySettings(settings) }
         )
+    }
+
+    @objc private func openWorkdayDays() {
+        workdayDays.show(saveToday: { [weak self] start, end in self?.applyToday(start: start, end: end) })
+    }
+
+    // MARK: - Inactivity
+
+    private var idleWatch: IdleWatch {
+        let defaults = UserDefaults.standard
+        return IdleWatch(
+            threshold: defaults.object(forKey: idleThresholdKey) as? Double ?? IdleWatch.defaultThreshold,
+            grace: defaults.object(forKey: idleGraceKey) as? Double ?? IdleWatch.defaultGrace
+        )
+    }
+
+    // Watches only during a VPN session inside a workday that is still running.
+    private func watchIdle() {
+        guard let idle = IdleTime.seconds() else {
+            return
+        }
+
+        let now = Date()
+        let watch = idleWatch
+        let start = workdayStart.flatMap { $0.provisional ? nil : $0.date }
+        let watching = store.activeSession() != nil && start != nil && stoppedAt == nil
+
+        switch watch.evaluate(
+            now: now,
+            idleSeconds: idle,
+            watching: watching,
+            workdayStart: start,
+            prompt: idlePromptState,
+            answeredAt: idleAnsweredAt
+        ) {
+        case .none:
+            break
+        case .ask(let idleSince):
+            let prompt = IdleWatch.Prompt(shownAt: now, idleSince: idleSince)
+            idlePromptState = prompt
+            appLog("idle: no input since \(clock.string(from: idleSince)), asking")
+            idlePrompt.show(
+                idleSince: idleSince,
+                stopAt: max(idleSince, start ?? idleSince),
+                deadline: watch.deadline(of: prompt),
+                keepWorking: { [weak self] in self?.keepWorking() },
+                endNow: { [weak self] in
+                    self?.stopWorkday(at: max(idleSince, start ?? idleSince), reason: "ended from the question")
+                }
+            )
+        case .stop(let end):
+            stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s")
+        case .withdraw:
+            appLog("idle: question withdrawn (VPN gone or workday over)")
+            idlePromptState = nil
+            idlePrompt.dismiss()
+        }
+    }
+
+    private func keepWorking() {
+        appLog("idle: still working")
+        idlePromptState = nil
+        idleAnsweredAt = Date()
+    }
+
+    // Ends today at `end`: the end becomes today's manual end, so the menu
+    // counter stops and the history row gets it. The VPN stays connected.
+    private func stopWorkday(at end: Date, reason: String) {
+        appLog("idle: workday stopped at \(clock.string(from: end)) (\(reason))")
+        idlePromptState = nil
+        idlePrompt.dismiss()
+        UserDefaults.standard.set(end, forKey: workdayEndManualKey)
+        refresh()
     }
 
     private func applyWorkdaySettings(_ settings: WorkdaySettings) {
@@ -604,8 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func revealCSV() {
-        let path = NSString(string: "~/.vpn-sessions.csv").expandingTildeInPath
-        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+        NSWorkspace.shared.selectFile(Self.dataPath(".vpn-sessions.csv"), inFileViewerRootedAtPath: "")
     }
 
     @objc private func quit() {

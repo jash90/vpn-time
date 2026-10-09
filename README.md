@@ -82,9 +82,8 @@ się tylko ręczna wartość, a bez niej menu pokazuje `Praca: nie wykryto`.
 
 ## Formularz „Czas pracy”
 
-Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają jedno okno.
-
-Górna część dotyczy **dzisiaj**:
+Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają okno ustawień
+**dzisiejszego** dnia:
 
 - początek: `Automatycznie` (z podglądem, co zostało wykryte) albo `Ręcznie` z
   godziną. Ręczna wartość obowiązuje **tylko tego dnia**; następnego dnia start
@@ -95,26 +94,58 @@ Górna część dotyczy **dzisiaj**:
 
 `Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
 minął, nic nie zamyka się od razu. Zapis bez zmiany reguły końca nie odpali go
-drugi raz tego samego dnia.
+drugi raz tego samego dnia. `Zapisz` kasuje też dzisiejszy ręczny koniec (z
+tabeli dni albo z pytania o bezczynność), więc zatrzymany dzień znów biegnie.
 
-Dolna część to **dni pracy** z `~/.vpn-workdays.csv`, łącznie z dzisiejszym
-(wiersz `dziś`). Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od`
-i `do`, potem `Zapisz dzień`; wybranie daty, której nie ma w tabeli, dodaje
-nowy dzień. `Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło
-`poprawiony` i apka już ich nie nadpisuje.
+## Okno „Dni pracy”
+
+Pozycja **Dni pracy…** otwiera osobne okno z dniami z `~/.vpn-workdays.csv`,
+łącznie z dzisiejszym (wiersz `dziś`). Nad tabelą są sumy: `Dziś … · ten
+tydzień … · ten miesiąc …`. Dzisiejszy dzień liczy się do teraz albo do
+zatrzymania; miniony dzień bez końca liczy się jako 0. Okno jest zwykłym oknem:
+zostaje na ekranie, gdy przełączasz się do innej aplikacji.
+
+Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od` i `do`, potem
+`Zapisz dzień`; wybranie daty, której nie ma w tabeli, dodaje nowy dzień.
+`Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło `poprawiony` i
+apka już ich nie nadpisuje.
 
 Dzisiejszy wiersz powstaje z ustawień: start jak w menu, koniec według reguły
 końca pracy (np. start + 11 h). Zapis dzisiejszego dnia w tabeli ustawia
-ręczny początek na dziś i zapamiętuje podany koniec. Ten koniec trafia tylko do
-historii; o zamknięciu Tunnelblicka dalej decyduje reguła. Kolejne `Zapisz` w
-górnej części wraca do końca z reguły. Dzisiejszego wiersza nie da się usunąć —
-służy do tego `Automatycznie`.
+ręczny początek i koniec na dziś. Gdy ten koniec minie, licznik pracy w menu
+staje: `Praca 08:00–15:30 (ręcznie) · 7h 30m`. O zamknięciu Tunnelblicka dalej
+decyduje reguła. Dzisiejszego wiersza nie da się usunąć — służy do tego
+`Automatycznie`.
 
 Historia ma kolumny `date,start_iso,end_iso,source`; starsze pliki bez kolumny
 końca są czytane dalej. Po uruchomieniu apka uzupełnia brakujące minione dni:
 start według reguły wykrywania, koniec jako koniec ostatniej sesji VPN tego dnia.
 Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
 do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
+
+## Bezczynność
+
+Podczas sesji VPN, w trakcie dnia pracy, apka co 5 s czyta czas od ostatniego
+użycia klawiatury lub myszy. Po **1 h** bez aktywności pokazuje okno
+**„Czy nadal pracujesz?”** z odliczaniem. Okno jest nad innymi oknami na każdym
+biurku, ale nie zabiera fokusu, więc odpowiada się kliknięciem:
+
+- **Pracuję** — nic się nie zmienia, ta godzina liczy się do pracy. Kolejne
+  pytanie najwcześniej po następnej pełnej godzinie bezczynności.
+- **Zakończ pracę** albo **brak kliknięcia przez 5 min** — dzień pracy kończy
+  się w chwili, gdy zaczęła się bezczynność (najwcześniej na początku pracy).
+  Licznik w menu staje, koniec trafia do historii. VPN zostaje połączony.
+  Sam powrót do komputera bez kliknięcia nie jest odpowiedzią.
+
+Rozłączenie VPN-u albo koniec dnia w trakcie pytania chowa okno bez
+zatrzymywania czasu. Każde pytanie i jego wynik trafiają do
+`~/Library/Logs/VPNTime.log`. Zatrzymany dzień wznawia `Zapisz` w oknie
+„Czas pracy”.
+
+Do testów: ukryte ustawienia `idleThresholdSeconds` i `idleGraceSeconds`
+(`defaults write com.redge.vpntimebar …`) skracają oba czasy, zmienna
+`VPNTIME_IDLE_FILE` podaje czas bezczynności z pliku, a `VPNTIME_DATA_DIR`
+przenosi pliki danych do innego folderu.
 
 ## Koniec pracy
 
@@ -206,7 +237,7 @@ System Events, stałe AppKit zdekodowane z `otool -tV`. Zapis tego śledztwa:
 Pięć rzeczy w tym repo **nie** pochodzi z oryginału i są świadomymi zmianami:
 ikona aplikacji (oryginał jej nie miał), własny glif w pasku menu zamiast
 systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy", funkcja
-„Początek pracy" (razem cztery nowe pozycje menu, przez co `verify-menu.sh`
-sprawdza teraz 18 pozycji zamiast 14) oraz same skrypty bash, które nie
-przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
-testach.
+„Początek pracy" (razem cztery nowe pozycje menu) oraz same skrypty bash, które
+nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
+testach. Później doszły aktualizacje z menu, okno „Dni pracy” i pytanie o
+bezczynność; `verify-menu.sh` sprawdza teraz 22 pozycje zamiast 14.
