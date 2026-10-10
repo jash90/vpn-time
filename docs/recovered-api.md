@@ -1,41 +1,41 @@
-# VPN Time — odzyskana specyfikacja API
+# VPN Time — recovered API specification
 
-**Status:** źródło prawdy dla odtworzenia aplikacji.
+**Status:** source of truth for recreating the app.
 
-**Skąd to pochodzi.** Źródła `main.swift` powstały 2026-07-08 w efemerycznym scratchpadzie
-sesji i zostały skasowane razem z nim. Specyfikację poniżej odzyskano empirycznie z
-działającej instalacji na **innej maszynie** (użytkownik `redge`):
+**Where this comes from.** The `main.swift` sources were created on 2026-07-08 in an ephemeral session
+scratchpad and were deleted along with it. The specification below was recovered empirically from a
+running installation on **another machine** (user `redge`):
 
-- nazwy typów i sygnatury — z demanglowanych symboli Swift (`nm -U` + `swift demangle`),
-- długie literały UI — z sekcji `__TEXT` binarki,
-- krótkie literały (≤15 bajtów, trzymane inline jako immediate) — przez odczytanie żywego
-  menu działającej apki przez System Events,
-- nazwy symboli SF, interwał timera i stałe AppKit — przez zdekodowanie immediate'ów
-  z `otool -tV`.
+- type names and signatures — from demangled Swift symbols (`nm -U` + `swift demangle`),
+- long UI literals — from the binary's `__TEXT` section,
+- short literals (≤15 bytes, stored inline as immediates) — by reading the live
+  menu of the running app through System Events,
+- SF Symbol names, the timer interval and AppKit constants — by decoding immediates
+  from `otool -tV`.
 
-**Uwaga dla czytelnika.** Na maszynie, na której odtworzono kod (`bartlomiejzimny`,
-2026-09-15), oryginalna binarka **nie istnieje**. Nie ma więc `docs/evidence/` ani
-możliwości ponownego zrzutu — ten dokument cytuje plan odtworzeniowy
-(`docs/superpowers/plans/2026-09-15-vpn-time-recreate.md`), a nie binarkę.
+**Note to the reader.** On the machine where the code was recreated (`bartlomiejzimny`,
+2026-09-15), the original binary **does not exist**. So there is no `docs/evidence/` and no
+way to take a fresh dump — this document cites the recreation plan
+(`docs/superpowers/plans/2026-09-15-vpn-time-recreate.md`), not the binary.
 
-> **Uwaga o aktualności (2026-09-15):** poniższy zrzut menu opisuje **oryginał**.
-> Działająca apka ma o jedną pozycję więcej — `Koniec pracy: …` zaraz po
-> `Uruchamiaj przy logowaniu` — dodaną na życzenie użytkownika już po
-> odtworzeniu. Pozycje 1–9 pozostają bez zmian.
+> **Note on currency (2026-09-15):** the menu dump below describes the **original**.
+> The running app has one more item — `Koniec pracy: …` ("End of work") right after
+> `Uruchamiaj przy logowaniu` ("Launch at login") — added at the user's request after
+> the recreation. Items 1–9 are unchanged.
 
 ---
 
-## Odzyskana specyfikacja (źródło prawdy dla parytetu)
+## Recovered specification (source of truth for parity)
 
-### Struktura projektu Swift (z symboli)
+### Swift project structure (from symbols)
 
 ```
 struct Session { let start: Date; let duration: Int }      // init(start:duration:)
-enum Bucket: Hashable                                       // 3 przypadki: dziś / tydzień / miesiąc
+enum Bucket: Hashable                                       // 3 cases: today / week / month
 final class VPNStore {
     private let csvPath: String                             // ~/.vpn-sessions.csv
     private let statePath: String                           // ~/.vpn-sessions.state
-    private let parser: DateFormatter                       // inicjalizowany domknięciem
+    private let parser: DateFormatter                       // initialised by a closure
     func sessions() -> [Session]
     func activeSession() -> (Date, String)?
 }
@@ -49,41 +49,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh()                                  // @objc
     private func rebuildMenu(sessions: [Session], active: (Date, String)?)
     private func total(_: Bucket, sessions: [Session], active: (Date, String)?) -> Int
-    //   ^ zawiera zagnieżdżone: func inBucket(_ date: Date) -> Bool
+    //   ^ contains nested: func inBucket(_ date: Date) -> Bool
     private func autostartEnabled() -> Bool
     private func toggleAutostart()                          // @objc
     private func runLaunchctl(_: [String])
     private func revealCSV()                                // @objc
     private func quit()                                     // @objc
 }
-let app = NSApplication.shared                              // globalne `app` i `delegate`
-let delegate = AppDelegate()                                //   => kod na poziomie main.swift
+let app = NSApplication.shared                              // global `app` and `delegate`
+let delegate = AppDelegate()                                //   => top-level code in main.swift
 ```
 
-### Stałe AppKit (zdekodowane z `otool -tV`)
+### AppKit constants (decoded from `otool -tV`)
 
-| Wywołanie | Wartość | Znaczenie |
+| Call | Value | Meaning |
 |---|---|---|
 | `setActivationPolicy:` | `1` | `.accessory` |
 | `statusItemWithLength:` | `-1.0` | `NSStatusItem.variableLength` |
 | `setImagePosition:` | `7` | `.imageLeading` |
-| `scheduledTimerWithTimeInterval:repeats:block:` | `15.0`, `repeats = true` | odświeżanie co 15 s |
+| `scheduledTimerWithTimeInterval:repeats:block:` | `15.0`, `repeats = true` | refresh every 15 s |
 
-### Ikona i opis dostępności (zdekodowane z immediate'ów)
+### Icon and accessibility description (decoded from immediates)
 
-| Stan | `systemSymbolName` | `accessibilityDescription` |
+| State | `systemSymbolName` | `accessibilityDescription` |
 |---|---|---|
-| połączony | `lock.fill` | `VPN on` |
-| rozłączony | `lock.open` | `VPN off` |
+| connected | `lock.fill` | `VPN on` |
+| disconnected | `lock.open` | `VPN off` |
 
-### Tytuł status itemu i tooltip
+### Status item title and tooltip
 
-- tytuł połączony: `" %d:%02d"` z **czasem trwania aktywnej sesji** (zweryfikowane: `" 120:47"` przy sesji od 10.09 07:44, odczyt 15.09 ~08:31) — uwaga, to **nie** jest suma dzisiejsza,
-- tytuł rozłączony: pusty (`""`),
-- tooltip połączony: `"VPN aktywny: " + config`,
-- tooltip rozłączony: `"VPN rozłączony"`.
+- connected title: `" %d:%02d"` with the **duration of the active session** (verified: `" 120:47"` for a session since 10.09 07:44, read on 15.09 ~08:31) — note, this is **not** today's total,
+- disconnected title: empty (`""`),
+- connected tooltip: `"VPN aktywny: " + config`,
+- disconnected tooltip: `"VPN rozłączony"`.
 
-### Menu — dosłowny zrzut z działającej apki (15.09.2026, VPN połączony)
+### Menu — verbatim dump from the running app (15.09.2026, VPN connected)
 
 ```
 [Czas na VPN]                                          enabled=false
@@ -102,44 +102,44 @@ let delegate = AppDelegate()                                //   => kod na pozio
 [Zakończ]                                              enabled=true
 ```
 
-Etykiety kubełków to **zaszyte literały z paddingiem**, nie wyrównanie liczone w kodzie (potwierdzone: `'Dziś:            '` leży w tablicy stringów binarki jako jeden 17-znakowy literał):
+The bucket labels are **hard-coded padded literals**, not alignment computed in code (confirmed: `'Dziś:            '` sits in the binary's string table as a single 17-character literal):
 
-| Literał | Długość | Doklejana wartość |
+| Literal | Length | Appended value |
 |---|---|---|
-| `"Dziś:            "` | 17 znaków (`Dziś:` + 12 spacji) | `hoursMinutes(...)` |
-| `"Ten tydzień:  "` | 14 znaków (`Ten tydzień:` + 2 spacje) | `hoursMinutes(...)` |
-| `"Ten miesiąc: "` | 13 znaków (`Ten miesiąc:` + 1 spacja) | `hoursMinutes(...)` |
+| `"Dziś:            "` | 17 characters (`Dziś:` + 12 spaces) | `hoursMinutes(...)` |
+| `"Ten tydzień:  "` | 14 characters (`Ten tydzień:` + 2 spaces) | `hoursMinutes(...)` |
+| `"Ten miesiąc: "` | 13 characters (`Ten miesiąc:` + 1 space) | `hoursMinutes(...)` |
 
-Format wartości: `String(format: "%dh %02dm", h, m)`.
+Value format: `String(format: "%dh %02dm", h, m)`.
 
-Wiersz stanu: `"● Połączony (" + config + ") od " + HH:mm(start)` albo `"○ Rozłączony"`.
+State line: `"● Połączony (" + config + ") od " + HH:mm(start)` or `"○ Rozłączony"`.
 
-### Semantyka kubełków (zweryfikowana empirycznie)
+### Bucket semantics (verified empirically)
 
-`inBucket` przyjmuje **jedną** datę — sesja należy w całości do kubełka swojego **początku**. Dowód z żywej apki z 15.09.2026 (wtorek):
-- aktywna sesja trwa od 10.09 (poprzedni tydzień ISO), `Dziś: 0h 00m` i `Ten tydzień: 0h 00m`, ale `Ten miesiąc: 250h 48m` zawiera jej 120h 47m,
-- rekord CSV `2026-09-07 07:31:22 → 2026-09-09 18:31:02` (212380 s) liczy się w całości do 7 września.
+`inBucket` takes **one** date — a session belongs entirely to the bucket of its **start**. Evidence from the live app on 15.09.2026 (Tuesday):
+- the active session has been running since 10.09 (the previous ISO week), `Dziś: 0h 00m` and `Ten tydzień: 0h 00m`, but `Ten miesiąc: 250h 48m` includes its 120h 47m,
+- the CSV record `2026-09-07 07:31:22 → 2026-09-09 18:31:02` (212380 s) counts entirely toward 7 September.
 
-**Dzielenie sesji na północy jest poza zakresem.** To odtworzenie, nie przeprojektowanie.
+**Splitting sessions at midnight is out of scope.** This is a recreation, not a redesign.
 
-### Format danych
+### Data format
 
-`~/.vpn-sessions.csv` (nagłówek + wiersze, 70 linii na 15.09.2026):
+`~/.vpn-sessions.csv` (header + rows, 70 lines as of 15.09.2026):
 ```
 start_iso,end_iso,duration_s,config
 2026-07-08 07:27:37,2026-07-08 07:41:36,839,Office_VPN_bartlomiej_zimny
 ```
-`~/.vpn-sessions.state` (istnieje tylko gdy VPN aktywny): `epoch<TAB>config`.
+`~/.vpn-sessions.state` (exists only while the VPN is active): `epoch<TAB>config`.
 
-Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZone = .current`** — CSV pisze `date -r` w czasie lokalnym; parsowanie w UTC przesunęłoby każdą sesję o 2 h i rozjechało kubełek `Dziś` przy północy.
+Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZone = .current`** — the CSV is written by `date -r` in local time; parsing in UTC would shift every session by 2 h and break the `Dziś` (today) bucket around midnight.
 
-### Świadome odstępstwa od oryginału
+### Deliberate deviations from the original
 
-1. `total(_:sessions:active:)` przenosi się z `AppDelegate` do `VPNTimeCore` (typ `Totals`) — sygnatura i nazwa bez zmian, zmienia się tylko miejsce zamieszkania, żeby dało się to przetestować bez AppKit.
-2. `VPNStore.init` dostaje parametry `csvPath:`/`statePath:` z domyślnymi wartościami `~/...` — testy celują w katalog tymczasowy.
-3. `Calendar(identifier: .iso8601)` zamiast `.current` — żeby tydzień w apce znaczył to samo co `%G-W%V` w `vpn-report.sh`.
-4. Cel `macos13.0` (patrz Global Constraints).
-5. `vpn-track.sh` dostaje `VPN_TRACK_LOGDIR` i `VPN_TRACK_PS_CMD` — bez tego testy skryptu są niewykonalne.
+1. `total(_:sessions:active:)` moves from `AppDelegate` to `VPNTimeCore` (type `Totals`) — signature and name unchanged, only its home changes, so it can be tested without AppKit.
+2. `VPNStore.init` gets `csvPath:`/`statePath:` parameters with `~/...` defaults — tests point them at a temporary directory.
+3. `Calendar(identifier: .iso8601)` instead of `.current` — so that a week in the app means the same as `%G-W%V` in `vpn-report.sh`.
+4. Target `macos13.0` (see Global Constraints).
+5. `vpn-track.sh` gets `VPN_TRACK_LOGDIR` and `VPN_TRACK_PS_CMD` — without them the script tests cannot be run.
 
 ---
 
