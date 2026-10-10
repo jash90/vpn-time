@@ -1,0 +1,123 @@
+/* VPN Time UI strings (Polish). Keys must match the other .lproj; see L10nTests. */
+
+/* Menu bar */
+"icon.vpnOn" = "VPN włączony";
+"icon.vpnOff" = "VPN wyłączony";
+"tooltip.vpnActive" = "VPN aktywny: %@";
+"tooltip.vpnDisconnected" = "VPN rozłączony";
+"menu.title" = "Czas na VPN";
+"menu.today" = "Dziś:            %@";
+"menu.thisWeek" = "Ten tydzień:  %@";
+"menu.thisMonth" = "Ten miesiąc: %@";
+"menu.connected" = "● Połączony (%1$@) od %2$@";
+"menu.disconnected" = "○ Rozłączony";
+"menu.worked.none" = "Praca: nie wykryto";
+"menu.worked.range" = "Praca %1$@–%2$@ (%3$@) · %4$@";
+"menu.worked.since" = "Praca od %1$@ (%2$@) · %3$@";
+"menu.launchAtLogin" = "Uruchamiaj przy logowaniu";
+"menu.workStart" = "Początek pracy: %@";
+"menu.workStart.manual" = "ręcznie %@";
+"menu.workStart.auto" = "auto";
+"menu.detectStart" = "Wykrywaj początek pracy";
+"menu.workEnd" = "Koniec pracy: %@";
+"menu.workEnd.off" = "wyłączony";
+"menu.workdays" = "Dni pracy…";
+"menu.showHistory" = "Pokaż plik z historią";
+"menu.refresh" = "Odśwież";
+"menu.version" = "Wersja %@";
+"menu.update.check" = "Sprawdź aktualizacje…";
+"menu.update.checking" = "Sprawdzanie aktualizacji…";
+"menu.update.install" = "Zainstaluj aktualizację %@…";
+"menu.update.downloading" = "Pobieranie aktualizacji…";
+"menu.quit" = "Zakończ";
+
+/* Workday end rule */
+"end.afterStart" = "%@ od startu";
+
+/* Where today's start came from */
+"source.manual" = "ręcznie";
+"source.vpn" = "VPN";
+"source.noVpn" = "bez VPN";
+"source.activity" = "aktywność";
+"source.edited" = "poprawiony";
+
+/* Update dialogs */
+"alert.upToDate" = "Masz najnowszą wersję (%@).";
+"alert.checkFailed" = "Nie udało się sprawdzić aktualizacji.";
+"alert.update.title" = "Dostępna wersja %@";
+"alert.update.installed" = "Zainstalowana: %@.";
+"alert.update.restart" = "Po instalacji aplikacja uruchomi się ponownie.";
+"alert.installFailed" = "Nie udało się zainstalować aktualizacji.";
+"alert.unverifiable.title" = "Dostępna wersja %@, ale nie da się jej zweryfikować";
+"alert.unverifiable.body" = "W wydaniu brakuje archiwum aplikacji albo jego sumy SHA-256, więc VPN Time nie zainstaluje go sam. Pobierz je ręcznie ze strony wydania.";
+"button.install" = "Zainstaluj";
+"button.later" = "Później";
+"button.openReleasePage" = "Otwórz stronę wydania";
+"button.ok" = "OK";
+"button.save" = "Zapisz";
+"button.close" = "Zamknij";
+
+/* Update errors */
+"update.error.offline" = "Brak połączenia z GitHubem: %@";
+"update.error.status" = "GitHub odpowiedział kodem %ld.";
+"update.error.unreadable" = "Nie udało się odczytać odpowiedzi GitHuba.";
+"update.error.download" = "Pobieranie nie powiodło się: %@";
+"update.error.downloadStatus" = "Pobieranie nie powiodło się (kod %ld).";
+"update.error.noFile" = "Pobieranie nie zwróciło pliku.";
+"update.error.checksum" = "Suma kontrolna pobranego pliku się nie zgadza.";
+"update.error.unpack" = "Nie udało się rozpakować aktualizacji: %@";
+"update.error.noApp" = "Archiwum nie zawiera %@.";
+"update.error.notNewer" = "Pobrana wersja (%1$@) nie jest nowsza od %2$@.";
+"update.error.notWritable" = "Brak uprawnień do zapisu w %@.";
+"update.error.noHelper" = "W tej kopii aplikacji brakuje update-helper.sh — zainstaluj ręcznie.";
+"update.error.signature" = "Nie udało się odczytać podpisu aktualizacji.";
+"update.error.requirement" = "Nie udało się zbudować wymagania podpisu.";
+"update.error.team" = "Aktualizacja nie jest podpisana przez zespół %1$@ (OSStatus %2$ld).";
+
+/* Work hours window */
+"form.title" = "Czas pracy";
+"form.startCaption" = "Początek pracy dziś";
+"form.start.auto" = "Automatycznie";
+"form.start.manual" = "Ręcznie";
+"form.detected" = "wykryto %1$@ (%2$@)";
+"form.detected.none" = "nic jeszcze nie wykryto";
+"form.endCaption" = "Koniec pracy (zamyka Tunnelblicka)";
+"form.end.off" = "Wyłączony";
+"form.end.at" = "O godzinie";
+"form.end.after" = "Po";
+"form.end.afterSuffix" = "od początku pracy";
+"form.preview.unknown" = "Dziś: początek nieznany";
+"form.preview.noEnd" = "Dziś: od %@, bez końca";
+"form.preview.endBeforeStart" = "Dziś: od %1$@, koniec %2$@ jest przed początkiem";
+"form.preview.range" = "Dziś: %1$@ → %2$@ (%3$@)";
+"form.hint" = "Ręczny początek obowiązuje tylko dziś. Koniec działa przy aktywnym VPN-ie, raz dziennie.";
+
+/* Work days window */
+"days.title" = "Dni pracy";
+"days.totals" = "Dziś %1$@  ·  ten tydzień %2$@  ·  ten miesiąc %3$@";
+"days.empty" = "Brak zapisanych dni — wybierz datę, żeby dodać dzień.";
+"days.endUnknown" = "Koniec nieznany — ustaw go i zapisz.";
+"days.newDay" = "Nowy dzień — zapisz, żeby go dodać.";
+"days.endBeforeStart" = "Koniec musi być później niż początek.";
+"days.saved" = "Zapisano %@.";
+"days.removed" = "Usunięto %@.";
+"days.cannotRemoveToday" = "Dzisiejszego dnia nie da się usunąć — ustaw początek na „Automatycznie”.";
+"days.today" = "dziś";
+"days.day" = "Dzień";
+"days.from" = "od";
+"days.to" = "do";
+"days.saveDay" = "Zapisz dzień";
+"days.removeDay" = "Usuń dzień";
+"days.hint" = "Zapis dzisiejszego dnia ustawia ręczny początek i koniec na dziś. Tunnelblicka dalej zamyka reguła końca pracy.";
+"days.column.day" = "Dzień";
+"days.column.start" = "Początek";
+"days.column.end" = "Koniec";
+"days.column.length" = "Czas";
+"days.column.source" = "Źródło";
+
+/* Inactivity question */
+"idle.headline" = "Czy nadal pracujesz?";
+"idle.message" = "Od %1$@ nie było aktywności klawiatury ani myszy (%2$@).";
+"idle.countdown" = "Bez odpowiedzi czas pracy zatrzyma się na %@.";
+"idle.working" = "Pracuję";
+"idle.endWork" = "Zakończ pracę";

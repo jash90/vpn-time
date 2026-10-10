@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>VPN Time</string>
 	<key>CFBundleExecutable</key>
@@ -10,6 +12,11 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.redge.vpntimebar</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>pl</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>VPN Time</string>
 	<key>CFBundlePackageType</key>
@@ -23,7 +30,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>VPN Time zamyka Tunnelblicka o ustawionej godzinie końca pracy.</string>
+	<string>VPN Time quits Tunnelblick at the end-of-work time you set.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>

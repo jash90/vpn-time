@@ -12,6 +12,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Localizations: <language>.lproj with Localizable.strings and InfoPlist.strings.
+for lproj in bundle/Resources/*.lproj; do
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 cp .build/release/VPNTime "$APP/Contents/MacOS/vpntime"
 
 # Shipped inside the bundle so an in-app update can refresh the tracker scripts

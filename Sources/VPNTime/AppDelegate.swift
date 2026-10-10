@@ -85,11 +85,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let active {
             statusItem.button?.image = MenuBarIcon.connected
             statusItem.button?.title = counter(Int(Date().timeIntervalSince(active.0)))
-            statusItem.button?.toolTip = "VPN aktywny: \(active.1)"
+            statusItem.button?.toolTip = L("tooltip.vpnActive", active.1)
         } else {
             statusItem.button?.image = MenuBarIcon.disconnected
             statusItem.button?.title = ""
-            statusItem.button?.toolTip = "VPN rozłączony"
+            statusItem.button?.toolTip = L("tooltip.vpnDisconnected")
         }
 
         rebuildMenu(sessions: sessions, active: active)
@@ -102,17 +102,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let totals = Totals(calendar: calendar, now: Date())
         let menu = NSMenu()
 
-        menu.addItem(disabled("Czas na VPN"))
+        menu.addItem(disabled(L("menu.title")))
         menu.addItem(.separator())
-        menu.addItem(disabled("Dziś:            " + hoursMinutes(totals.total(.today, sessions: sessions, active: active))))
-        menu.addItem(disabled("Ten tydzień:  " + hoursMinutes(totals.total(.week, sessions: sessions, active: active))))
-        menu.addItem(disabled("Ten miesiąc: " + hoursMinutes(totals.total(.month, sessions: sessions, active: active))))
+        menu.addItem(disabled(L("menu.today", hoursMinutes(totals.total(.today, sessions: sessions, active: active)))))
+        menu.addItem(disabled(L("menu.thisWeek", hoursMinutes(totals.total(.week, sessions: sessions, active: active)))))
+        menu.addItem(disabled(L("menu.thisMonth", hoursMinutes(totals.total(.month, sessions: sessions, active: active)))))
         menu.addItem(.separator())
 
         if let active {
-            menu.addItem(disabled("● Połączony (\(active.1)) od \(clock.string(from: active.0))"))
+            menu.addItem(disabled(L("menu.connected", active.1, clock.string(from: active.0))))
         } else {
-            menu.addItem(disabled("○ Rozłączony"))
+            menu.addItem(disabled(L("menu.disconnected")))
         }
 
         menu.addItem(disabled(workedLine()))
@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         let autostart = NSMenuItem(
-            title: "Uruchamiaj przy logowaniu",
+            title: L("menu.launchAtLogin"),
             action: #selector(toggleAutostart),
             keyEquivalent: ""
         )
@@ -128,24 +128,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autostart.state = autostartEnabled() ? .on : .off
         menu.addItem(autostart)
         menu.addItem(action(
-            "Początek pracy: " + (manualStart.map { "ręcznie " + clock.string(from: $0) } ?? "auto"),
+            L("menu.workStart", manualStart.map { L("menu.workStart.manual", clock.string(from: $0)) } ?? L("menu.workStart.auto")),
             #selector(openWorkdayForm)
         ))
 
-        let detection = action("Wykrywaj początek pracy", #selector(toggleDetection))
+        let detection = action(L("menu.detectStart"), #selector(toggleDetection))
         detection.state = detectionEnabled ? .on : .off
         menu.addItem(detection)
         menu.addItem(workdayEndItem())
-        menu.addItem(action("Dni pracy…", #selector(openWorkdayDays)))
+        menu.addItem(action(L("menu.workdays"), #selector(openWorkdayDays)))
 
         menu.addItem(.separator())
-        menu.addItem(action("Pokaż plik z historią", #selector(revealCSV)))
-        menu.addItem(action("Odśwież", #selector(refresh)))
+        menu.addItem(action(L("menu.showHistory"), #selector(revealCSV)))
+        menu.addItem(action(L("menu.refresh"), #selector(refresh)))
         menu.addItem(.separator())
-        menu.addItem(disabled("Wersja \(updater.currentVersionString)"))
+        menu.addItem(disabled(L("menu.version", updater.currentVersionString)))
         menu.addItem(updateItem())
         menu.addItem(.separator())
-        menu.addItem(action("Zakończ", #selector(quit)))
+        menu.addItem(action(L("menu.quit"), #selector(quit)))
 
         statusItem.menu = menu
     }
@@ -180,18 +180,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Wall-clock time since the start; breaks are not subtracted.
     private func workedLine() -> String {
         guard let start = workdayStart else {
-            return "Praca: nie wykryto"
+            return L("menu.worked.none")
         }
 
         let source = WorkdayForm.label(for: start)
 
         if let end = stoppedAt {
             let worked = max(0, Int(end.timeIntervalSince(start.date)))
-            return "Praca \(clock.string(from: start.date))–\(clock.string(from: end)) (\(source)) · " + hoursMinutes(worked)
+            return L("menu.worked.range", clock.string(from: start.date), clock.string(from: end), source, hoursMinutes(worked))
         }
 
         let worked = max(0, Int(Date().timeIntervalSince(start.date)))
-        return "Praca od \(clock.string(from: start.date)) (\(source)) · " + hoursMinutes(worked)
+        return L("menu.worked.since", clock.string(from: start.date), source, hoursMinutes(worked))
     }
 
     // Today's end set by hand (the days table, or an unanswered inactivity
@@ -407,7 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func workdayEndItem() -> NSMenuItem {
         action(
-            "Koniec pracy: " + (workdayEndRule?.label ?? "wyłączony"),
+            L("menu.workEnd", workdayEndRule?.label ?? L("menu.workEnd.off")),
             #selector(openWorkdayForm)
         )
     }
@@ -524,13 +524,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateItem() -> NSMenuItem {
         switch updateState {
         case .idle:
-            return action("Sprawdź aktualizacje…", #selector(checkForUpdates))
+            return action(L("menu.update.check"), #selector(checkForUpdates))
         case .checking:
-            return disabled("Sprawdzanie aktualizacji…")
+            return disabled(L("menu.update.checking"))
         case .available(let update):
-            return action("Zainstaluj aktualizację \(update.tag)…", #selector(offerUpdate))
+            return action(L("menu.update.install", update.tag), #selector(offerUpdate))
         case .installing:
-            return disabled("Pobieranie aktualizacji…")
+            return disabled(L("menu.update.downloading"))
         }
     }
 
@@ -582,7 +582,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refresh()
 
                 if manual {
-                    self.alert("Masz najnowszą wersję (\(self.updater.currentVersionString)).")
+                    self.alert(L("alert.upToDate", self.updater.currentVersionString))
                 }
             case .success(.unverifiable(let tag, let pageURL)):
                 // Never installed from here, so the quiet check only logs it.
@@ -605,7 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refresh()
 
                 if manual {
-                    self.alert("Nie udało się sprawdzić aktualizacji.", info: error.localizedDescription)
+                    self.alert(L("alert.checkFailed"), info: error.localizedDescription)
                 }
             }
         }
@@ -619,12 +619,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let notes = update.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let shortNotes = notes.count > 600 ? String(notes.prefix(600)) + "…" : notes
         let alert = NSAlert()
-        alert.messageText = "Dostępna wersja \(update.tag)"
-        alert.informativeText = "Zainstalowana: \(updater.currentVersionString)."
+        alert.messageText = L("alert.update.title", update.tag)
+        alert.informativeText = L("alert.update.installed", updater.currentVersionString)
             + (shortNotes.isEmpty ? "" : "\n\n" + shortNotes)
-            + "\n\nPo instalacji aplikacja uruchomi się ponownie."
-        alert.addButton(withTitle: "Zainstaluj")
-        alert.addButton(withTitle: "Później")
+            + "\n\n" + L("alert.update.restart")
+        alert.addButton(withTitle: L("button.install"))
+        alert.addButton(withTitle: L("button.later"))
         NSApp.activate(ignoringOtherApps: true)
 
         guard alert.runModal() == .alertFirstButtonReturn else {
@@ -639,17 +639,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updater.install(update) { [weak self] error in
             self?.updateState = .idle
             self?.refresh()
-            self?.alert("Nie udało się zainstalować aktualizacji.", info: error.localizedDescription)
+            self?.alert(L("alert.installFailed"), info: error.localizedDescription)
         }
     }
 
     private func offerManualInstall(tag: String, pageURL: URL?) {
         let alert = NSAlert()
-        alert.messageText = "Dostępna wersja \(tag), ale nie da się jej zweryfikować"
-        alert.informativeText = "W wydaniu brakuje archiwum aplikacji albo jego sumy SHA-256, więc "
-            + "VPN Time nie zainstaluje go sam. Pobierz je ręcznie ze strony wydania."
-        alert.addButton(withTitle: "Otwórz stronę wydania")
-        alert.addButton(withTitle: "OK")
+        alert.messageText = L("alert.unverifiable.title", tag)
+        alert.informativeText = L("alert.unverifiable.body")
+        alert.addButton(withTitle: L("button.openReleasePage"))
+        alert.addButton(withTitle: L("button.ok"))
         NSApp.activate(ignoringOtherApps: true)
 
         let page = pageURL ?? URL(string: "https://github.com/jash90/vpn-time/releases")!

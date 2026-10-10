@@ -112,6 +112,10 @@ final class WorkdayEndRuleTests: XCTestCase {
             now: date("2026-10-02 17:00:00"), start: nil, lastFired: nil, calendar: calendar
         ))
         XCTAssertEqual(fixed.label, "17:00")
+        L10n.table = StringsTables.load("pl")
         XCTAssertEqual(rule.label, "8h 00m od startu")
+        L10n.table = StringsTables.load("en")
+        XCTAssertEqual(rule.label, "8h 00m after start")
+        L10n.table = nil
     }
 }

@@ -39,7 +39,7 @@ public enum WorkdayEndRule: Hashable {
         case .fixed(let end):
             return end.label
         case .afterStart(let minutes):
-            return hoursMinutes(minutes * 60) + " od startu"
+            return L("end.afterStart", hoursMinutes(minutes * 60))
         }
     }
 

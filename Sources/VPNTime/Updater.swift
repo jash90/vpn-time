@@ -55,9 +55,9 @@ final class Updater {
             let result: Result<CheckOutcome, Error>
 
             if let error {
-                result = .failure(UpdateError("Brak połączenia z GitHubem: \(error.localizedDescription)"))
+                result = .failure(UpdateError(L("update.error.offline", error.localizedDescription)))
             } else if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
-                result = .failure(UpdateError("GitHub odpowiedział kodem \(status)."))
+                result = .failure(UpdateError(L("update.error.status", status)))
             } else if let data, let release = try? JSONDecoder().decode(Release.self, from: data) {
                 if let update = Update.evaluate(release: release, currentVersion: current) {
                     result = .success(.available(update))
@@ -67,7 +67,7 @@ final class Updater {
                     result = .success(.upToDate)
                 }
             } else {
-                result = .failure(UpdateError("Nie udało się odczytać odpowiedzi GitHuba."))
+                result = .failure(UpdateError(L("update.error.unreadable")))
             }
 
             DispatchQueue.main.async { completion(result) }
@@ -86,15 +86,15 @@ final class Updater {
 
             do {
                 if let error {
-                    throw UpdateError("Pobieranie nie powiodło się: \(error.localizedDescription)")
+                    throw UpdateError(L("update.error.download", error.localizedDescription))
                 }
 
                 if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
-                    throw UpdateError("Pobieranie nie powiodło się (kod \(status)).")
+                    throw UpdateError(L("update.error.downloadStatus", status))
                 }
 
                 guard let location else {
-                    throw UpdateError("Pobieranie nie zwróciło pliku.")
+                    throw UpdateError(L("update.error.noFile"))
                 }
 
                 try self.stage(update, archive: location)
@@ -125,7 +125,7 @@ final class Updater {
             .joined()
 
         guard digest == update.sha256 else {
-            throw UpdateError("Suma kontrolna pobranego pliku się nie zgadza.")
+            throw UpdateError(L("update.error.checksum"))
         }
 
         appLog("update: sha256 ok")
@@ -134,13 +134,13 @@ final class Updater {
         let ditto = Self.run("/usr/bin/ditto", ["-x", "-k", archive.path, unpacked.path])
 
         guard ditto.isEmpty else {
-            throw UpdateError("Nie udało się rozpakować aktualizacji: \(ditto)")
+            throw UpdateError(L("update.error.unpack", ditto))
         }
 
         let newApp = unpacked.appendingPathComponent(Self.appName)
 
         guard fileManager.fileExists(atPath: newApp.path) else {
-            throw UpdateError("Archiwum nie zawiera \(Self.appName).")
+            throw UpdateError(L("update.error.noApp", Self.appName))
         }
 
         try Self.verifySignature(of: newApp)
@@ -149,19 +149,19 @@ final class Updater {
         let newVersion = Bundle(url: newApp)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         guard let newVersion, let parsed = AppVersion(newVersion), parsed > currentVersion else {
-            throw UpdateError("Pobrana wersja (\(newVersion ?? "?")) nie jest nowsza od \(currentVersionString).")
+            throw UpdateError(L("update.error.notNewer", newVersion ?? "?", currentVersionString))
         }
 
         let destination = Bundle.main.bundleURL
 
         guard fileManager.isWritableFile(atPath: destination.deletingLastPathComponent().path) else {
-            throw UpdateError("Brak uprawnień do zapisu w \(destination.deletingLastPathComponent().path).")
+            throw UpdateError(L("update.error.notWritable", destination.deletingLastPathComponent().path))
         }
 
         // The helper comes from the running bundle: an older release being
         // installed may not carry one, and the old bundle is gone after the swap.
         guard let bundledHelper = Bundle.main.url(forResource: "update-helper", withExtension: "sh") else {
-            throw UpdateError("W tej kopii aplikacji brakuje update-helper.sh — zainstaluj ręcznie.")
+            throw UpdateError(L("update.error.noHelper"))
         }
 
         let helper = work.appendingPathComponent("update-helper.sh")
@@ -189,21 +189,21 @@ final class Updater {
         var code: SecStaticCode?
 
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code else {
-            throw UpdateError("Nie udało się odczytać podpisu aktualizacji.")
+            throw UpdateError(L("update.error.signature"))
         }
 
         let source = "anchor apple generic and identifier \"\(bundleID)\" and certificate leaf[subject.OU] = \"\(teamID)\""
         var requirement: SecRequirement?
 
         guard SecRequirementCreateWithString(source as CFString, [], &requirement) == errSecSuccess, let requirement else {
-            throw UpdateError("Nie udało się zbudować wymagania podpisu.")
+            throw UpdateError(L("update.error.requirement"))
         }
 
         let flags = SecCSFlags(rawValue: kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode)
         let status = SecStaticCodeCheckValidity(code, flags, requirement)
 
         guard status == errSecSuccess else {
-            throw UpdateError("Aktualizacja nie jest podpisana przez zespół \(teamID) (OSStatus \(status)).")
+            throw UpdateError(L("update.error.team", teamID, Int(status)))
         }
     }
 
