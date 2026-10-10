@@ -37,7 +37,7 @@ workday_of() {
 buckets() {
   [ -f "$CSV" ] || return 0
 
-  tail -n +2 "$CSV" | while IFS=, read -r start_iso end_iso duration config; do
+  tail -n +2 "$CSV" | while IFS=, read -r start_iso _end_iso duration config; do
     case "${duration:-}" in
       ''|*[!0-9]*) continue ;;
     esac
