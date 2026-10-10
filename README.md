@@ -1,204 +1,227 @@
 # VPN Time
 
-Tracker czasu spędzonego na VPN-ie (Tunnelblick) dla macOS: ikona w pasku menu
-z licznikiem bieżącej sesji i sumami dziś / ten tydzień / ten miesiąc, plus
-raport w terminalu.
+English | [Polski](README.pl.md)
 
-Powstał, bo Tunnelblick nie zapisuje sumarycznego czasu — log pojedynczego
-połączenia jest nadpisywany przy kolejnym, a unified log macOS ma retencję
-rzędu dwóch dni. Nie ma więc skąd odczytać „ile godzin byłem na VPN-ie w tym
-miesiącu".
+A macOS tracker for time spent on the VPN (Tunnelblick): a menu bar icon with a
+counter for the current session and totals for today / this week / this month,
+plus a terminal report.
 
-## Architektura
+It exists because Tunnelblick does not record cumulative time — the log of a
+single connection is overwritten by the next one, and the macOS unified log
+keeps only about two days. So there is nowhere to read "how many hours was I on
+the VPN this month" from.
 
-Dwa niezależne byty:
+The interface is in English, or in Polish when Polish is the preferred macOS
+language (System Settings → General → Language & Region).
 
-- **Poller** (`vpn-track.sh`, launchd co 30 s) — jedyne źródło surowych danych.
-  Sprawdza, czy żyje proces openvpn Tunnelblicka; przy połączeniu zapisuje
-  `~/.vpn-sessions.state`, przy rozłączeniu dopisuje wiersz do
-  `~/.vpn-sessions.csv`. Przy okazji notuje ciągi aktywności przy komputerze
-  (`~/.vpn-activity.*`). Działa niezależnie od tego, czy apka jest uruchomiona.
-- **Widok** (`VPN Time.app`) — czyta te pliki co 15 s. Sam zapisuje tylko plist
-  autostartu i historię początków pracy (`~/.vpn-workdays.csv`). Zamknięcie apki
-  nie przerywa zbierania danych.
+## Architecture
 
-Rdzeń logiki (`VPNTimeCore`) jest oddzielony od AppKit, żeby dał się testować
-jednostkowo; `AppDelegate` jest cienki i weryfikowany end-to-end.
+Two independent parts:
 
-## Komponenty i ścieżki docelowe
+- **Poller** (`vpn-track.sh`, launchd every 30 s) — the only source of raw data.
+  It checks whether Tunnelblick's openvpn process is alive; on connect it writes
+  `~/.vpn-sessions.state`, on disconnect it appends a row to
+  `~/.vpn-sessions.csv`. Along the way it records runs of activity at the
+  computer (`~/.vpn-activity.*`). It works regardless of whether the app is
+  running.
+- **View** (`VPN Time.app`) — reads those files every 15 s. It only writes the
+  autostart plist and the history of workday starts (`~/.vpn-workdays.csv`)
+  itself. Quitting the app does not stop data collection.
 
-| Element | Ścieżka |
+The core logic (`VPNTimeCore`) is separated from AppKit so it can be unit
+tested; `AppDelegate` is thin and verified end-to-end.
+
+## Components and install paths
+
+| Item | Path |
 |---|---|
-| Apka | `~/Applications/VPN Time.app` |
+| App | `~/Applications/VPN Time.app` |
 | Poller | `~/.local/bin/vpn-track.sh` |
-| Raport CLI | `~/.local/bin/vpn-report.sh` |
-| Agent pollera | `~/Library/LaunchAgents/com.redge.vpntrack.plist` |
-| Agent apki | `~/Library/LaunchAgents/com.redge.vpntimebar.plist` |
-| Dane | `~/.vpn-sessions.csv`, `~/.vpn-sessions.state` |
-| Aktywność | `~/.vpn-activity.csv` (zamknięte ciągi), `~/.vpn-activity.state` (bieżący) |
-| Dni pracy | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source`) |
+| CLI report | `~/.local/bin/vpn-report.sh` |
+| Poller agent | `~/Library/LaunchAgents/com.redge.vpntrack.plist` |
+| App agent | `~/Library/LaunchAgents/com.redge.vpntimebar.plist` |
+| Data | `~/.vpn-sessions.csv`, `~/.vpn-sessions.state` |
+| Activity | `~/.vpn-activity.csv` (closed runs), `~/.vpn-activity.state` (current) |
+| Workdays | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source`) |
 
-## Instalacja
+## Installation
 
 ```bash
 ./build.sh && ./install.sh
 ```
 
-`install.sh` jest idempotentny i przed każdą podmianą robi kopię danych sesji.
-Po instalacji apka wstaje z opóźnieniem do ~10 s — LaunchServices ocenia świeżo
-skopiowany, podpisany ad-hoc bundle.
+`install.sh` is idempotent and backs up the session data before every
+replacement. After installation the app can take up to ~10 s to start —
+LaunchServices assesses the freshly copied, ad-hoc signed bundle.
 
-## Testy
+## Tests
 
 ```bash
-./test/run-tests.sh      # testy jednostkowe Swift + testy obu skryptów bash
-./tools/verify-menu.sh   # zgodność menu działającej apki ze specyfikacją
+./test/run-tests.sh      # Swift unit tests + tests of both bash scripts
+./tools/verify-menu.sh   # running app's menu matches the specification
 ```
 
-`verify-menu.sh` czyta menu przez System Events, więc wymaga uprawnienia
-**Dostępność** dla terminala, z którego jest uruchamiany.
+`verify-menu.sh` reads the menu through System Events, so the terminal it is run
+from needs the **Accessibility** permission.
 
-## Początek pracy
+## Start of work
 
-Pod stanem połączenia menu pokazuje wiersz `Praca od 08:12 (aktywność) · 6h 05m`,
-czyli kiedy zaczął się dzień pracy i ile czasu od tego minęło. Licznik to czas
-brutto od startu, przerwy nie są odejmowane.
+Below the connection state, the menu shows a line like
+`Work since 08:12 (activity) · 6h 05m` (Polish: `Praca od 08:12 (aktywność) · 6h 05m`),
+i.e. when the workday started and how much time has passed since. The counter is
+gross time since the start; breaks are not subtracted.
 
-Jak apka wykrywa start:
+How the app detects the start:
 
-- Poller co 30 s czyta czas bezczynności klawiatury i myszy (`HIDIdleTime`).
-  Aktywność w ostatniej minucie przedłuża bieżący **ciąg aktywności**. Przerwa
-  dłuższa niż **30 min** (także uśpienie Maca) zamyka ciąg i zaczyna nowy.
-- Startem jest **początek ciągu, w którym nastąpiło pierwsze dzisiejsze
-  połączenie VPN**. Rzut oka na laptopa o 7:00 nie liczy się, jeśli właściwa
-  praca ruszyła o 8:40, a VPN o 8:45 — start to 8:40.
-- Gdy dziś nie było jeszcze VPN-a, pokazany jest pierwszy ciąg aktywności z
-  dopiskiem `(bez VPN)`, jako start wstępny.
-- Źródło w nawiasie: `aktywność` (ciąg zaczął się przed VPN-em), `VPN` (brak
-  wcześniejszej aktywności), `ręcznie`.
+- Every 30 s the poller reads the keyboard and mouse idle time (`HIDIdleTime`).
+  Activity within the last minute extends the current **activity run**. A break
+  longer than **30 min** (including the Mac sleeping) closes the run and starts
+  a new one.
+- The start is **the beginning of the run in which today's first VPN connection
+  happened**. A glance at the laptop at 7:00 does not count if the real work
+  began at 8:40 and the VPN at 8:45 — the start is 8:40.
+- If there has been no VPN connection yet today, the first activity run is shown
+  with the suffix `(no VPN)` as a provisional start.
+- The source in parentheses: `activity` (the run began before the VPN), `VPN`
+  (no earlier activity), `manual`.
 
-Przełącznik **Wykrywaj początek pracy** w menu wyłącza wykrywanie. Wtedy liczy
-się tylko ręczna wartość, a bez niej menu pokazuje `Praca: nie wykryto`.
+The **"Detect start of work"** (Polish: "Wykrywaj początek pracy") toggle in the
+menu turns detection off. Then only the manual value counts, and without one the
+menu shows `Work: not detected`.
 
-## Formularz „Czas pracy”
+## The "Work hours" form
 
-Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają okno ustawień
-**dzisiejszego** dnia:
+The **"Start of work"** (Polish: "Początek pracy") and **"End of work"**
+(Polish: "Koniec pracy") menu items open the settings window for **today**
+(the "Work hours" form, Polish: "Czas pracy"):
 
-- początek: `Automatycznie` (z podglądem, co zostało wykryte) albo `Ręcznie` z
-  godziną. Ręczna wartość obowiązuje **tylko tego dnia**; następnego dnia start
-  znów jest wykrywany;
-- przełącznik wykrywania;
-- koniec: `Wyłączony`, `O godzinie` albo `Po … od początku pracy`;
-- podgląd na żywo, np. `Dziś: 08:00 → 16:00 (8h 00m)`.
+- start: `Automatic` (with a preview of what was detected) or `Manual` with a
+  time. A manual value applies **to that day only**; the next day the start is
+  detected again;
+- the detection toggle;
+- end: `Off`, `At` or `After … from the start of work`;
+- a live preview, e.g. `Today: 08:00 → 16:00 (8h 00m)`.
 
-`Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
-minął, nic nie zamyka się od razu. Zapis bez zmiany reguły końca nie odpali go
-drugi raz tego samego dnia. `Zapisz` kasuje też dzisiejszy ręczny koniec (z
-tabeli dni albo z pytania o bezczynność), więc zatrzymany dzień znów biegnie.
+`Save` applies everything at once. If the end according to the new settings has
+already passed, nothing closes immediately. Saving without changing the end rule
+will not fire it a second time on the same day. `Save` also clears today's
+manual end (from the workdays table or from the idle prompt), so a stopped day
+runs again.
 
-## Okno „Dni pracy”
+## The "Work days" window
 
-Pozycja **Dni pracy…** otwiera osobne okno z dniami z `~/.vpn-workdays.csv`,
-łącznie z dzisiejszym (wiersz `dziś`). Nad tabelą są sumy: `Dziś … · ten
-tydzień … · ten miesiąc …`. Dzisiejszy dzień liczy się do teraz albo do
-zatrzymania; miniony dzień bez końca liczy się jako 0. Okno jest zwykłym oknem:
-zostaje na ekranie, gdy przełączasz się do innej aplikacji.
+The **"Work days…"** (Polish: "Dni pracy…") item opens a separate window with the
+days from `~/.vpn-workdays.csv`, including today (the `today` row). Above the
+table are the totals: `Today … · this week … · this month …`. Today counts up to
+now or until it was stopped; a past day without an end counts as 0. The window
+is a regular window: it stays on screen when you switch to another app.
 
-Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od` i `do`, potem
-`Zapisz dzień`; wybranie daty, której nie ma w tabeli, dodaje nowy dzień.
-`Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło `poprawiony` i
-apka już ich nie nadpisuje.
+Clicking a row loads the day for editing. Set the date, the `from` and `to`
+times, then **"Save day"** (Polish: "Zapisz dzień"); picking a date that is not
+in the table adds a new day. **"Remove day"** (Polish: "Usuń dzień") deletes the
+row. Corrected past days get the source `edited` and the app no longer
+overwrites them.
 
-Dzisiejszy wiersz powstaje z ustawień: start jak w menu, koniec według reguły
-końca pracy (np. start + 11 h). Zapis dzisiejszego dnia w tabeli ustawia
-ręczny początek i koniec na dziś. Gdy ten koniec minie, licznik pracy w menu
-staje: `Praca 08:00–15:30 (ręcznie) · 7h 30m`. O zamknięciu Tunnelblicka dalej
-decyduje reguła. Dzisiejszego wiersza nie da się usunąć — służy do tego
-`Automatycznie`.
+Today's row is built from the settings: the start as shown in the menu, the end
+according to the end-of-work rule (e.g. start + 11 h). Saving today's row in the
+table sets a manual start and end for today. Once that end passes, the work
+counter in the menu stops: `Work 08:00–15:30 (manual) · 7h 30m`. Whether
+Tunnelblick gets closed is still decided by the rule. Today's row cannot be
+removed — use `Automatic` for that.
 
-Historia ma kolumny `date,start_iso,end_iso,source`; starsze pliki bez kolumny
-końca są czytane dalej. Po uruchomieniu apka uzupełnia brakujące minione dni:
-start według reguły wykrywania, koniec jako koniec ostatniej sesji VPN tego dnia.
-Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
-do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
+The history has the columns `date,start_iso,end_iso,source`; older files without
+the end column are still read. On launch the app fills in missing past days:
+the start according to the detection rule, the end as the end of that day's last
+VPN session. Days without a VPN connection do not go into the history.
+`vpn-report.sh` (day view) appends them to the row:
+`2026-10-02     7h 40m   start 08:12  end 16:30`. The report prints English, or
+Polish when `VPN_REPORT_LANG`, `LC_ALL`, `LC_MESSAGES` or `LANG` starts with `pl`.
 
-## Bezczynność
+## Idleness
 
-Podczas sesji VPN, w trakcie dnia pracy, apka co 5 s czyta czas od ostatniego
-użycia klawiatury lub myszy. Po **1 h** bez aktywności pokazuje okno
-**„Czy nadal pracujesz?”** z odliczaniem. Okno jest nad innymi oknami na każdym
-biurku, ale nie zabiera fokusu, więc odpowiada się kliknięciem:
+During a VPN session, within the workday, the app reads the time since the last
+keyboard or mouse use every 5 s. After **1 h** without activity it shows an
+**"Are you still working?"** (Polish: "Czy nadal pracujesz?") window with a
+countdown. The window floats above other windows on every desktop but does not
+take focus, so you answer with a click:
 
-- **Pracuję** — nic się nie zmienia, ta godzina liczy się do pracy. Kolejne
-  pytanie najwcześniej po następnej pełnej godzinie bezczynności.
-- **Zakończ pracę** albo **brak kliknięcia przez 5 min** — dzień pracy kończy
-  się w chwili, gdy zaczęła się bezczynność (najwcześniej na początku pracy).
-  Licznik w menu staje, koniec trafia do historii. VPN zostaje połączony.
-  Sam powrót do komputera bez kliknięcia nie jest odpowiedzią.
+- **"I'm working"** (Polish: "Pracuję") — nothing changes, that hour counts as
+  work. The next prompt comes no earlier than after the next full hour of
+  idleness.
+- **"End work"** (Polish: "Zakończ pracę") or **no click within 5 min** — the
+  workday ends at the moment the idleness began (no earlier than the start of
+  work). The menu counter stops and the end goes into the history. The VPN stays
+  connected. Simply returning to the computer without clicking is not an answer.
 
-Rozłączenie VPN-u albo koniec dnia w trakcie pytania chowa okno bez
-zatrzymywania czasu. Każde pytanie i jego wynik trafiają do
-`~/Library/Logs/VPNTime.log`. Zatrzymany dzień wznawia `Zapisz` w oknie
-„Czas pracy”.
+Disconnecting the VPN or the end of the day while the prompt is up hides the
+window without stopping the time. Every prompt and its outcome go to
+`~/Library/Logs/VPNTime.log`. A stopped day is resumed with `Save` in the
+"Work hours" window.
 
-Do testów: ukryte ustawienia `idleThresholdSeconds` i `idleGraceSeconds`
-(`defaults write com.redge.vpntimebar …`) skracają oba czasy, zmienna
-`VPNTIME_IDLE_FILE` podaje czas bezczynności z pliku, a `VPNTIME_DATA_DIR`
-przenosi pliki danych do innego folderu.
+For testing: the hidden settings `idleThresholdSeconds` and `idleGraceSeconds`
+(`defaults write com.redge.vpntimebar …`) shorten both times, the
+`VPNTIME_IDLE_FILE` variable supplies the idle time from a file, and
+`VPNTIME_DATA_DIR` moves the data files to another folder.
 
-## Koniec pracy
+## End of work
 
-Koniec pracy ustawia się w formularzu „Czas pracy”. **O godzinie** to dowolna
-godzina i minuta. **Po … od początku pracy** to np. `08:00`, czyli 8 h od
-wykrytego lub ręcznie ustawionego startu. Gdy ten moment nadejdzie, apka rozłącza
-VPN i zamyka Tunnelblicka, co domyka sesję w CSV.
+The end of work is set in the "Work hours" form. **At** is any hour and
+minute. **After … from the start of work** is e.g. `08:00`, i.e. 8 h after the
+detected or manually set start. When that moment arrives, the app disconnects
+the VPN and quits Tunnelblick, which closes the session in the CSV.
 
-Trzy rzeczy warto wiedzieć:
+Things worth knowing:
 
-- Zamknięcie odpala się **tylko przy aktywnej sesji VPN**. Ustawiona godzina
-  przy rozłączonym VPN-ie nic nie robi; nie zamknie też Tunnelblicka, jeśli
-  połączysz się ponownie po godzinie końca pracy.
-- Odpala się **raz dziennie**. Data ostatniego odpalenia siedzi w preferencjach,
-  więc restart apki wieczorem nie wywoła zamknięcia drugi raz.
-- Wybranie godziny, która **dziś już minęła**, nie zamyka niczego natychmiast —
-  ustawienie wchodzi w życie od następnego dnia. To samo dotyczy ręcznej zmiany
-  początku pracy, po której termin „start + N h” okazuje się już miniony.
-- W trybie „po czasie” bez znanego startu nic się nie odpala. Gdy koniec już raz
-  odpalił danego dnia, późniejsze przesunięcie startu nie odpali go ponownie.
+- Quitting fires **only during an active VPN session**. A configured time does
+  nothing while the VPN is disconnected; it also will not quit Tunnelblick if
+  you reconnect after the end-of-work time.
+- It fires **once a day**. The date of the last firing is kept in the
+  preferences, so restarting the app in the evening will not trigger the quit a
+  second time.
+- Choosing a time that **has already passed today** does not close anything
+  immediately — the setting takes effect from the next day. The same applies to
+  manually changing the start of work so that the "start + N h" deadline turns
+  out to have already passed.
+- In "after a duration" mode nothing fires without a known start. Once the end
+  has fired on a given day, moving the start later will not fire it again.
 
-Dokładność to ±15 s (interwał timera apki). Wynik każdej próby zamknięcia ląduje
-w `~/Library/Logs/VPNTime.log`.
+The accuracy is ±15 s (the app's timer interval). The result of every quit
+attempt goes to `~/Library/Logs/VPNTime.log`.
 
-## Aktualizacje
+## Updates
 
-Na dole menu jest wiersz `Wersja 1.3.0` i pozycja **Sprawdź aktualizacje…**.
-Apka pyta GitHuba o najnowsze wydanie (`jash90/vpn-time`, endpoint
-`releases/latest`). Ręczne sprawdzenie kończy się zawsze oknem: „masz najnowszą
-wersję", błąd albo propozycja instalacji z notatkami wydania. Oprócz tego raz na
-24 h apka sprawdza po cichu; gdy coś znajdzie, pozycja zmienia się na
-`Zainstaluj aktualizację v1.4.0…`. Bez kliknięcia nic się nie instaluje.
+At the bottom of the menu there is a `Version 1.3.0` line and a
+**"Check for updates…"** (Polish: "Sprawdź aktualizacje…") item. The app asks
+GitHub for the latest release (`jash90/vpn-time`, the `releases/latest`
+endpoint). A manual check always ends with a dialog: "you have the latest
+version", an error, or an install offer with the release notes. In addition,
+once every 24 h the app checks silently; when it finds something, the item
+changes to **"Install update v1.4.0…"** (Polish: "Zainstaluj aktualizację
+v1.4.0…"). Nothing is installed without a click.
 
-Instalacja:
+Installation:
 
-1. Pobranie `VPN-Time-<tag>.zip` z wydania.
-2. Porównanie SHA-256 archiwum z sumą, którą GitHub publikuje przy pliku.
-   Wydanie bez tej sumy w ogóle nie jest proponowane.
-3. Rozpakowanie i sprawdzenie podpisu: Developer ID zespołu `H2X8YGN869`,
-   identyfikator `com.redge.vpntimebar`.
-4. Wersja w pobranym `Info.plist` musi być wyższa od bieżącej.
-5. Apka uruchamia `update-helper.sh` (ze swojego bundla) i się zamyka. Helper
-   czeka na jej koniec, podmienia bundle (stary trafia na bok i wraca, jeśli
-   podmiana się nie uda), instaluje `vpn-track.sh` i `vpn-report.sh` z nowego
-   bundla do `~/.local/bin`, przeładowuje agenta pollera i uruchamia apkę.
+1. Download `VPN-Time-<tag>.zip` from the release.
+2. Compare the archive's SHA-256 with the checksum GitHub publishes for the
+   file. A release without that checksum is not offered at all.
+3. Unpack and verify the signature: Developer ID of team `H2X8YGN869`,
+   identifier `com.redge.vpntimebar`.
+4. The version in the downloaded `Info.plist` must be higher than the current
+   one.
+5. The app launches `update-helper.sh` (from its own bundle) and quits. The
+   helper waits for it to exit, replaces the bundle (the old one is moved aside
+   and restored if the replacement fails), installs `vpn-track.sh` and
+   `vpn-report.sh` from the new bundle into `~/.local/bin`, reloads the poller
+   agent and launches the app.
 
-Każdy krok ląduje w `~/Library/Logs/VPNTime.log`. Aktualizacja działa tylko
-tam, gdzie apka może pisać do folderu nadrzędnego (domyślnie `~/Applications`).
+Every step goes to `~/Library/Logs/VPNTime.log`. Updating only works where the
+app can write to its parent folder (`~/Applications` by default).
 
-`release.sh` odmawia wydania, gdy tag nie zgadza się z
-`CFBundleShortVersionString` w `bundle/Info.plist`.
+Releases are built, notarised and published locally with `scripts/release.sh`,
+which refuses to release when the tag does not match
+`CFBundleShortVersionString` in `bundle/Info.plist`. See [RELEASING.md](RELEASING.md).
 
-## Aliasy
+## Aliases
 
 ```
 alias vpntime='~/.local/bin/vpn-report.sh'
@@ -206,38 +229,40 @@ alias vpntime-week='~/.local/bin/vpn-report.sh week'
 alias vpntime-month='~/.local/bin/vpn-report.sh month'
 ```
 
-## Wyłączanie
+## Disabling
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.redge.vpntimebar.plist  # sam pasek
-launchctl unload ~/Library/LaunchAgents/com.redge.vpntrack.plist    # zbieranie danych
+launchctl unload ~/Library/LaunchAgents/com.redge.vpntimebar.plist  # menu bar app only
+launchctl unload ~/Library/LaunchAgents/com.redge.vpntrack.plist    # data collection
 ```
 
-## Znane ograniczenia
+## Known limitations
 
-- Dokładność końca sesji ±30 s (interwał pollingu). Początek jest dokładny —
-  bierze się z logu openvpn, nie z momentu odpytania.
-- **Sesja liczy się w całości do kubełka swojego początku.** Sesja rozpoczęta
-  w poniedziałek i trwająca do środy w całości ląduje w poniedziałku, więc
-  `Dziś` potrafi pokazywać `0h 00m` mimo aktywnego VPN-a. To zachowanie
-  oryginału, zamrożone testami, a nie błąd.
-- Wiersz „od HH:mm" nie pokazuje daty, więc przy sesjach wielodniowych sama
-  godzina bywa myląca.
-- Tydzień liczony po ISO (od poniedziałku), spójnie z `%G-W%V` w raporcie CLI.
+- Session end accuracy is ±30 s (the polling interval). The start is exact — it
+  comes from the openvpn log, not from the moment of polling.
+- **A session counts entirely toward the bucket of its start.** A session that
+  starts on Monday and lasts until Wednesday lands entirely on Monday, so
+  "Today" (Polish: "Dziś") can show `0h 00m` despite an active VPN. This is the
+  original's behaviour, frozen by tests, not a bug.
+- The "since HH:mm" line shows no date, so for multi-day sessions the time alone
+  can be misleading.
+- Weeks are counted per ISO (starting Monday), consistent with `%G-W%V` in the
+  CLI report.
 
-## Jak powstało to repo
+## How this repo came about
 
-Źródła `main.swift` zginęły 2026-07-08 razem z efemerycznym scratchpadem sesji.
-Specyfikację odtworzono empirycznie z działającej binarki na innej maszynie —
-demanglowane symbole Swift, literały z sekcji `__TEXT`, zrzut żywego menu przez
-System Events, stałe AppKit zdekodowane z `otool -tV`. Zapis tego śledztwa:
-[`docs/recovered-api.md`](docs/recovered-api.md), pełny plan odtworzenia:
+The `main.swift` sources were lost on 2026-07-08 along with an ephemeral session
+scratchpad. The specification was reconstructed empirically from the running
+binary on another machine — demangled Swift symbols, literals from the `__TEXT`
+section, a dump of the live menu via System Events, AppKit constants decoded
+from `otool -tV`. The record of that investigation:
+[`docs/recovered-api.md`](docs/recovered-api.md); the full recreation plan:
 [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
-Pięć rzeczy w tym repo **nie** pochodzi z oryginału i są świadomymi zmianami:
-ikona aplikacji (oryginał jej nie miał), własny glif w pasku menu zamiast
-systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy", funkcja
-„Początek pracy" (razem cztery nowe pozycje menu) oraz same skrypty bash, które
-nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
-testach. Później doszły aktualizacje z menu, okno „Dni pracy” i pytanie o
-bezczynność; `verify-menu.sh` sprawdza teraz 22 pozycje zamiast 14.
+Five things in this repo do **not** come from the original and are deliberate
+changes: the app icon (the original had none), a custom menu bar glyph instead
+of the system `lock.fill` / `lock.open` symbols, the "End of work" feature, the
+"Start of work" feature (four new menu items in total) and the bash scripts
+themselves, which did not survive in any copy and were recreated from the
+contracts frozen in the tests. Later came in-menu updates, the "Work days" window
+and the idle prompt; `verify-menu.sh` now checks 22 items instead of 14.

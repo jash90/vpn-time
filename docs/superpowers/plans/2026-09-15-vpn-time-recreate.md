@@ -1,61 +1,61 @@
-# VPN Time — odtworzenie źródeł i konsolidacja w repo (Implementation Plan)
+# VPN Time — source recreation and consolidation into a repo (Implementation Plan)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Odtworzyć utracone źródła aplikacji menu bar „VPN Time" i zebrać cały tracker czasu VPN (apka Swift + dwa skrypty bash + dwa agenty launchd) w jedno wersjonowane repo `~/Projects/vpn-time`, nie przerywając działania obecnej instalacji ani nie tracąc historii w CSV.
+**Goal:** Recreate the lost sources of the "VPN Time" menu-bar app and gather the whole VPN time tracker (Swift app + two bash scripts + two launchd agents) into a single versioned repo `~/Projects/vpn-time`, without interrupting the current installation or losing the history in the CSV.
 
-**Architecture:** Repo SPM z rozdziałem na testowalny rdzeń bez AppKit (`VPNTimeCore`: parsowanie CSV/state, kubełki czasowe, formatowanie) i cienką warstwę UI (`VPNTime`: `AppDelegate` + `main.swift` na AppKit). Skrypty bash dostają wstrzykiwalne zależności (`VPN_TRACK_LOGDIR`, `VPN_TRACK_PS_CMD`) żeby dały się testować pod `HOME=$(mktemp -d)`. Ploty launchd trzymane jako szablony (launchd nie rozwija `~`), renderowane przez `install.sh`. Parytet z oryginałem weryfikuje zero-zależnościowy smoke test AppleScript, uruchamiany **najpierw na starej, działającej apce** — dopiero test, który przechodzi na oryginale, jest wiarygodny dla nowej binarki.
+**Architecture:** An SPM repo split into a testable core without AppKit (`VPNTimeCore`: CSV/state parsing, time buckets, formatting) and a thin UI layer (`VPNTime`: `AppDelegate` + `main.swift` on AppKit). The bash scripts get injectable dependencies (`VPN_TRACK_LOGDIR`, `VPN_TRACK_PS_CMD`) so they can be tested under `HOME=$(mktemp -d)`. The launchd plists are kept as templates (launchd does not expand `~`) and rendered by `install.sh`. Parity with the original is verified by a zero-dependency AppleScript smoke test, run **first against the old, working app** — only a test that passes on the original is trustworthy for the new binary.
 
-**Tech Stack:** Swift 6.3 toolchain / swift-tools-version 6.0 w trybie języka Swift 5, AppKit (`NSStatusItem`), XCTest, bash, launchd, `osascript`/System Events, `codesign` ad-hoc. Zero zależności zewnętrznych.
+**Tech Stack:** Swift 6.3 toolchain / swift-tools-version 6.0 in Swift 5 language mode, AppKit (`NSStatusItem`), XCTest, bash, launchd, `osascript`/System Events, ad-hoc `codesign`. Zero external dependencies.
 
-**Spec:** `docs/recovered-api.md` (tworzony w Zadaniu 1) — zapis śledztwa na binarce `~/Applications/VPN Time.app/Contents/MacOS/vpntime`. Pełna treść odzyskanej specyfikacji jest też wklejona niżej w „Odzyskana specyfikacja", żeby ten plan był samowystarczalny.
+**Spec:** `docs/recovered-api.md` (created in Task 1) — the record of the investigation of the binary `~/Applications/VPN Time.app/Contents/MacOS/vpntime`. The full recovered specification is also pasted below under "Recovered specification", so that this plan is self-contained.
 
 ---
 
-## Kontekst: dlaczego ten plan istnieje
+## Context: why this plan exists
 
-Źródło `main.swift` powstało 8 lipca 2026 w efemerycznym scratchpadzie sesji i zostało skasowane razem z nim. Przetrwała wyłącznie skompilowana binarka (arm64, ad-hoc signed, bez debug info). Skrypty bash i ploty launchd przetrwały, bo leżą w `~/.local/bin` i `~/Library/LaunchAgents`.
+The `main.swift` source was created on 8 July 2026 in an ephemeral session scratchpad and was deleted along with it. Only the compiled binary survived (arm64, ad-hoc signed, no debug info). The bash scripts and launchd plists survived because they live in `~/.local/bin` and `~/Library/LaunchAgents`.
 
-Sprawdzono i wykluczono: `find`/Spotlight po całym `$HOME`, transkrypty `~/.claude/projects/**` (sesja `1010cebb-…` już nie istnieje), `dwarfdump` (brak debug info), Time Machine (`No machine directory found for host`).
+Checked and ruled out: `find`/Spotlight across the whole `$HOME`, the transcripts in `~/.claude/projects/**` (session `1010cebb-…` no longer exists), `dwarfdump` (no debug info), Time Machine (`No machine directory found for host`).
 
-**Cała specyfikacja poniżej została odzyskana empirycznie**, nie zgadnięta:
-- nazwy typów i sygnatury — z demanglowanych symboli Swift (`nm -U` + `swift demangle`),
-- długie literały UI — z sekcji `__TEXT` binarki,
-- krótkie literały (≤15 bajtów, trzymane inline jako immediate) — przez odczytanie **żywego menu działającej apki** przez System Events,
-- nazwy symboli SF, interwał timera i stałe AppKit — przez zdekodowanie immediate'ów z `otool -tV`.
+**The entire specification below was recovered empirically**, not guessed:
+- type names and signatures — from demangled Swift symbols (`nm -U` + `swift demangle`),
+- long UI literals — from the binary's `__TEXT` section,
+- short literals (≤15 bytes, stored inline as immediates) — by reading the **live menu of the running app** through System Events,
+- SF Symbol names, the timer interval and AppKit constants — by decoding immediates from `otool -tV`.
 
 ---
 
 ## Global Constraints
 
-Każde zadanie dziedziczy te wymagania.
+Every task inherits these requirements.
 
-- **Język:** proza planu, README i treść ticketów po polsku; **kod, komentarze w kodzie, nazwy branchy i commit messages po angielsku** (globalne `CLAUDE.md`).
-- **Komentarze w kodzie są bardzo rzadkie.** Zamiast komentarza — nazwanie warunku, wyciągnięcie funkcji, nazwana stała. Uzasadnienia trafiają do README/commit message, nie inline.
-- **Puste linie wokół `if`** — przed i po bloku `if`, ale nigdy bezpośrednio po `{` ani przed `}`.
-- **Skill `dry-js-ts`** dotyczy JS/TS; tu nie ma JS/TS, ale jego zasady obowiązują w duchu: platforma przed zależnością, zero bibliotek zewnętrznych, typy wyprowadzane, nie przepisywane.
-- **Zero zależności zewnętrznych.** Ani w Swift (`dependencies: []`), ani w testach bash (bez `bats`).
-- **Nazwy odzyskane zachowujemy dosłownie:** `Session(start:duration:)`, `Bucket` (`Hashable`), `VPNStore.sessions() -> [Session]`, `VPNStore.activeSession() -> (Date, String)?`, `total(_:sessions:active:) -> Int` z zagnieżdżonym `inBucket(_:) -> Bool`, `AppDelegate.rebuildMenu(sessions:active:)`, `refresh()`, `toggleAutostart()`, `autostartEnabled() -> Bool`, `runLaunchctl(_: [String])`, `revealCSV()`, `quit()`, pole `agentLabel = "com.redge.vpntimebar"`, `csvPath`, `statePath`, `parser`, `statusItem`, `store`, `timer`, `calendar`.
-- **Teksty UI po polsku, dosłownie** z listy w „Odzyskana specyfikacja". Żadnych przeredagowań, żadnych poprawek interpunkcji — nawet padding spacjami jest częścią kontraktu.
-- **Cel platformy: macOS 13** (`platforms: [.macOS(.v13)]`, `-target arm64-apple-macos13.0`). Oryginał deklarował `LSMinimumSystemVersion 13.0` w `Info.plist`, ale binarka miała `VersionMin 26.0` — to była niespójność; ten plan ją naprawia świadomie.
-- **Tryb języka Swift 5** (`swiftLanguageModes: [.v5]` przy `swift-tools-version: 6.0`). Oryginał był budowany gołym `swiftc` w trybie domyślnym; włączenie trybu 6 wciągnęłoby `NSStatusItem` i domknięcie `Timer`a w strict concurrency, co jest czystą stratą czasu przy odtwarzaniu.
-- **Podpis:** ad-hoc, `codesign --force --deep -s - <bundle>`; `CFBundleIdentifier = com.redge.vpntimebar`, `CFBundleExecutable = vpntime`.
-- **Nietykalne:** plik `~/.vpn-sessions.csv` i agent `com.redge.vpntrack`. Zbieranie danych nie może się zatrzymać ani zgubić rekordu na żadnym etapie.
-- **Commity:** częste, jeden commit na zadanie (albo na krok, gdy zadanie jest długie); format `feat:` / `fix:` / `test:` / `docs:` / `chore:`.
+- **Language:** plan prose, README and ticket text in Polish; **code, code comments, branch names and commit messages in English** (global `CLAUDE.md`).
+- **Code comments are very rare.** Instead of a comment — name the condition, extract a function, use a named constant. Rationale goes into the README/commit message, not inline.
+- **Blank lines around `if`** — before and after an `if` block, but never directly after `{` or before `}`.
+- **The `dry-js-ts` skill** applies to JS/TS; there is no JS/TS here, but its principles apply in spirit: platform before dependency, zero external libraries, types derived, not restated.
+- **Zero external dependencies.** Neither in Swift (`dependencies: []`) nor in the bash tests (no `bats`).
+- **Recovered names are kept verbatim:** `Session(start:duration:)`, `Bucket` (`Hashable`), `VPNStore.sessions() -> [Session]`, `VPNStore.activeSession() -> (Date, String)?`, `total(_:sessions:active:) -> Int` with a nested `inBucket(_:) -> Bool`, `AppDelegate.rebuildMenu(sessions:active:)`, `refresh()`, `toggleAutostart()`, `autostartEnabled() -> Bool`, `runLaunchctl(_: [String])`, `revealCSV()`, `quit()`, the field `agentLabel = "com.redge.vpntimebar"`, `csvPath`, `statePath`, `parser`, `statusItem`, `store`, `timer`, `calendar`.
+- **UI texts in Polish, verbatim** from the list in "Recovered specification". No rewording, no punctuation fixes — even the space padding is part of the contract.
+- **Platform target: macOS 13** (`platforms: [.macOS(.v13)]`, `-target arm64-apple-macos13.0`). The original declared `LSMinimumSystemVersion 13.0` in `Info.plist`, but the binary had `VersionMin 26.0` — that was an inconsistency; this plan fixes it deliberately.
+- **Swift 5 language mode** (`swiftLanguageModes: [.v5]` with `swift-tools-version: 6.0`). The original was built with bare `swiftc` in the default mode; enabling mode 6 would drag `NSStatusItem` and the `Timer` closure into strict concurrency, which is pure wasted time for a recreation.
+- **Signing:** ad-hoc, `codesign --force --deep -s - <bundle>`; `CFBundleIdentifier = com.redge.vpntimebar`, `CFBundleExecutable = vpntime`.
+- **Untouchable:** the file `~/.vpn-sessions.csv` and the agent `com.redge.vpntrack`. Data collection must not stop or lose a record at any stage.
+- **Commits:** frequent, one commit per task (or per step when a task is long); format `feat:` / `fix:` / `test:` / `docs:` / `chore:`.
 
 ---
 
-## Odzyskana specyfikacja (źródło prawdy dla parytetu)
+## Recovered specification (source of truth for parity)
 
-### Struktura projektu Swift (z symboli)
+### Swift project structure (from symbols)
 
 ```
 struct Session { let start: Date; let duration: Int }      // init(start:duration:)
-enum Bucket: Hashable                                       // 3 przypadki: dziś / tydzień / miesiąc
+enum Bucket: Hashable                                       // 3 cases: today / week / month
 final class VPNStore {
     private let csvPath: String                             // ~/.vpn-sessions.csv
     private let statePath: String                           // ~/.vpn-sessions.state
-    private let parser: DateFormatter                       // inicjalizowany domknięciem
+    private let parser: DateFormatter                       // initialized with a closure
     func sessions() -> [Session]
     func activeSession() -> (Date, String)?
 }
@@ -69,41 +69,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh()                                  // @objc
     private func rebuildMenu(sessions: [Session], active: (Date, String)?)
     private func total(_: Bucket, sessions: [Session], active: (Date, String)?) -> Int
-    //   ^ zawiera zagnieżdżone: func inBucket(_ date: Date) -> Bool
+    //   ^ contains a nested: func inBucket(_ date: Date) -> Bool
     private func autostartEnabled() -> Bool
     private func toggleAutostart()                          // @objc
     private func runLaunchctl(_: [String])
     private func revealCSV()                                // @objc
     private func quit()                                     // @objc
 }
-let app = NSApplication.shared                              // globalne `app` i `delegate`
-let delegate = AppDelegate()                                //   => kod na poziomie main.swift
+let app = NSApplication.shared                              // global `app` and `delegate`
+let delegate = AppDelegate()                                //   => top-level code in main.swift
 ```
 
-### Stałe AppKit (zdekodowane z `otool -tV`)
+### AppKit constants (decoded from `otool -tV`)
 
-| Wywołanie | Wartość | Znaczenie |
+| Call | Value | Meaning |
 |---|---|---|
 | `setActivationPolicy:` | `1` | `.accessory` |
 | `statusItemWithLength:` | `-1.0` | `NSStatusItem.variableLength` |
 | `setImagePosition:` | `7` | `.imageLeading` |
-| `scheduledTimerWithTimeInterval:repeats:block:` | `15.0`, `repeats = true` | odświeżanie co 15 s |
+| `scheduledTimerWithTimeInterval:repeats:block:` | `15.0`, `repeats = true` | refresh every 15 s |
 
-### Ikona i opis dostępności (zdekodowane z immediate'ów)
+### Icon and accessibility description (decoded from immediates)
 
-| Stan | `systemSymbolName` | `accessibilityDescription` |
+| State | `systemSymbolName` | `accessibilityDescription` |
 |---|---|---|
-| połączony | `lock.fill` | `VPN on` |
-| rozłączony | `lock.open` | `VPN off` |
+| connected | `lock.fill` | `VPN on` |
+| disconnected | `lock.open` | `VPN off` |
 
-### Tytuł status itemu i tooltip
+### Status item title and tooltip
 
-- tytuł połączony: `" %d:%02d"` z **czasem trwania aktywnej sesji** (zweryfikowane: `" 120:47"` przy sesji od 10.09 07:44, odczyt 15.09 ~08:31) — uwaga, to **nie** jest suma dzisiejsza,
-- tytuł rozłączony: pusty (`""`),
-- tooltip połączony: `"VPN aktywny: " + config`,
-- tooltip rozłączony: `"VPN rozłączony"`.
+- connected title: `" %d:%02d"` with the **duration of the active session** (verified: `" 120:47"` for a session since 10.09 07:44, read on 15.09 ~08:31) — note, this is **not** today's total,
+- disconnected title: empty (`""`),
+- connected tooltip: `"VPN aktywny: " + config`,
+- disconnected tooltip: `"VPN rozłączony"`.
 
-### Menu — dosłowny zrzut z działającej apki (15.09.2026, VPN połączony)
+### Menu — verbatim dump from the running app (15.09.2026, VPN connected)
 
 ```
 [Czas na VPN]                                          enabled=false
@@ -122,44 +122,44 @@ let delegate = AppDelegate()                                //   => kod na pozio
 [Zakończ]                                              enabled=true
 ```
 
-Etykiety kubełków to **zaszyte literały z paddingiem**, nie wyrównanie liczone w kodzie (potwierdzone: `'Dziś:            '` leży w tablicy stringów binarki jako jeden 17-znakowy literał):
+The bucket labels are **hard-coded padded literals**, not alignment computed in code (confirmed: `'Dziś:            '` sits in the binary's string table as a single 17-character literal):
 
-| Literał | Długość | Doklejana wartość |
+| Literal | Length | Appended value |
 |---|---|---|
-| `"Dziś:            "` | 17 znaków (`Dziś:` + 12 spacji) | `hoursMinutes(...)` |
-| `"Ten tydzień:  "` | 14 znaków (`Ten tydzień:` + 2 spacje) | `hoursMinutes(...)` |
-| `"Ten miesiąc: "` | 13 znaków (`Ten miesiąc:` + 1 spacja) | `hoursMinutes(...)` |
+| `"Dziś:            "` (Today) | 17 characters (`Dziś:` + 12 spaces) | `hoursMinutes(...)` |
+| `"Ten tydzień:  "` (This week) | 14 characters (`Ten tydzień:` + 2 spaces) | `hoursMinutes(...)` |
+| `"Ten miesiąc: "` (This month) | 13 characters (`Ten miesiąc:` + 1 space) | `hoursMinutes(...)` |
 
-Format wartości: `String(format: "%dh %02dm", h, m)`.
+Value format: `String(format: "%dh %02dm", h, m)`.
 
-Wiersz stanu: `"● Połączony (" + config + ") od " + HH:mm(start)` albo `"○ Rozłączony"`.
+Status row: `"● Połączony (" + config + ") od " + HH:mm(start)` ("Connected (…) since") or `"○ Rozłączony"` (Disconnected).
 
-### Semantyka kubełków (zweryfikowana empirycznie)
+### Bucket semantics (verified empirically)
 
-`inBucket` przyjmuje **jedną** datę — sesja należy w całości do kubełka swojego **początku**. Dowód z żywej apki z 15.09.2026 (wtorek):
-- aktywna sesja trwa od 10.09 (poprzedni tydzień ISO), `Dziś: 0h 00m` i `Ten tydzień: 0h 00m`, ale `Ten miesiąc: 250h 48m` zawiera jej 120h 47m,
-- rekord CSV `2026-09-07 07:31:22 → 2026-09-09 18:31:02` (212380 s) liczy się w całości do 7 września.
+`inBucket` takes **a single** date — a session belongs entirely to the bucket of its **start**. Evidence from the live app on 15.09.2026 (Tuesday):
+- the active session has been running since 10.09 (previous ISO week), `Dziś: 0h 00m` and `Ten tydzień: 0h 00m`, but `Ten miesiąc: 250h 48m` includes its 120h 47m,
+- the CSV record `2026-09-07 07:31:22 → 2026-09-09 18:31:02` (212380 s) counts entirely towards 7 September.
 
-**Dzielenie sesji na północy jest poza zakresem.** To odtworzenie, nie przeprojektowanie.
+**Splitting sessions at midnight is out of scope.** This is a recreation, not a redesign.
 
-### Format danych
+### Data format
 
-`~/.vpn-sessions.csv` (nagłówek + wiersze, 70 linii na 15.09.2026):
+`~/.vpn-sessions.csv` (header + rows, 70 lines as of 15.09.2026):
 ```
 start_iso,end_iso,duration_s,config
 2026-07-08 07:27:37,2026-07-08 07:41:36,839,Office_VPN_bartlomiej_zimny
 ```
-`~/.vpn-sessions.state` (istnieje tylko gdy VPN aktywny): `epoch<TAB>config`.
+`~/.vpn-sessions.state` (exists only while the VPN is active): `epoch<TAB>config`.
 
-Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZone = .current`** — CSV pisze `date -r` w czasie lokalnym; parsowanie w UTC przesunęłoby każdą sesję o 2 h i rozjechało kubełek `Dziś` przy północy.
+Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZone = .current`** — the CSV is written by `date -r` in local time; parsing in UTC would shift every session by 2 h and throw the `Dziś` (Today) bucket off around midnight.
 
-### Świadome odstępstwa od oryginału
+### Deliberate deviations from the original
 
-1. `total(_:sessions:active:)` przenosi się z `AppDelegate` do `VPNTimeCore` (typ `Totals`) — sygnatura i nazwa bez zmian, zmienia się tylko miejsce zamieszkania, żeby dało się to przetestować bez AppKit.
-2. `VPNStore.init` dostaje parametry `csvPath:`/`statePath:` z domyślnymi wartościami `~/...` — testy celują w katalog tymczasowy.
-3. `Calendar(identifier: .iso8601)` zamiast `.current` — żeby tydzień w apce znaczył to samo co `%G-W%V` w `vpn-report.sh`.
-4. Cel `macos13.0` (patrz Global Constraints).
-5. `vpn-track.sh` dostaje `VPN_TRACK_LOGDIR` i `VPN_TRACK_PS_CMD` — bez tego testy skryptu są niewykonalne.
+1. `total(_:sessions:active:)` moves from `AppDelegate` to `VPNTimeCore` (type `Totals`) — signature and name unchanged, only its home changes, so it can be tested without AppKit.
+2. `VPNStore.init` gets `csvPath:`/`statePath:` parameters with `~/...` defaults — tests target a temporary directory.
+3. `Calendar(identifier: .iso8601)` instead of `.current` — so that a week in the app means the same as `%G-W%V` in `vpn-report.sh`.
+4. Target `macos13.0` (see Global Constraints).
+5. `vpn-track.sh` gets `VPN_TRACK_LOGDIR` and `VPN_TRACK_PS_CMD` — without them the script tests cannot be run.
 
 ---
 
@@ -168,28 +168,28 @@ Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZon
 ```
 ~/Projects/vpn-time/
 ├── .gitignore                          # .build/, build/, *.bak-*
-├── README.md                           # architektura, instalacja, historia śledztwa
+├── README.md                           # architecture, installation, investigation history
 ├── Package.swift                       # SPM: VPNTimeCore (lib) + VPNTime (exe)
 ├── Sources/
 │   ├── VPNTimeCore/
 │   │   ├── Session.swift               # struct Session
 │   │   ├── Bucket.swift                # enum Bucket + Calendar.vpnTimeISO
-│   │   ├── VPNStore.swift              # odczyt CSV + state file
+│   │   ├── VPNStore.swift              # reads the CSV + state file
 │   │   ├── Totals.swift                # total(_:sessions:active:) + inBucket
-│   │   └── TimeFormat.swift            # hoursMinutes(_:) i counter(_:)
+│   │   └── TimeFormat.swift            # hoursMinutes(_:) and counter(_:)
 │   └── VPNTime/
 │       ├── AppDelegate.swift           # NSStatusItem, menu, timer, autostart
-│       └── main.swift                  # globalne app/delegate, NSApp.run()
+│       └── main.swift                  # global app/delegate, NSApp.run()
 ├── Tests/
 │   └── VPNTimeCoreTests/
 │       ├── VPNStoreTests.swift
 │       ├── TotalsTests.swift
 │       └── TimeFormatTests.swift
 ├── scripts/
-│   ├── vpn-track.sh                    # poller (z wstrzykiwalnym LOGDIR/PS_CMD)
-│   └── vpn-report.sh                   # raport CLI
+│   ├── vpn-track.sh                    # poller (with injectable LOGDIR/PS_CMD)
+│   └── vpn-report.sh                   # CLI report
 ├── test/
-│   ├── run-tests.sh                    # uruchamia oba poniższe
+│   ├── run-tests.sh                    # runs both of the below
 │   ├── test-vpn-track.sh
 │   └── test-vpn-report.sh
 ├── launchd/
@@ -198,11 +198,11 @@ Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZon
 ├── bundle/
 │   └── Info.plist
 ├── tools/
-│   └── verify-menu.sh                  # smoke test parytetu menu przez System Events
-├── build.sh                            # swift build + montaż .app + codesign
+│   └── verify-menu.sh                  # menu parity smoke test via System Events
+├── build.sh                            # swift build + .app assembly + codesign
 ├── install.sh                          # backup, deploy, launchctl
 └── docs/
-    ├── recovered-api.md                # spec śledcza (Zadanie 1)
+    ├── recovered-api.md                # forensic spec (Task 1)
     ├── evidence/
     │   ├── menu-2026-09-15.txt
     │   ├── symbols-2026-09-15.txt
@@ -210,13 +210,13 @@ Parser: `dateFormat = "yyyy-MM-dd HH:mm:ss"`, `locale = en_US_POSIX`, **`timeZon
     └── superpowers/plans/2026-09-15-vpn-time-recreate.md
 ```
 
-Podział `VPNTimeCore` / `VPNTime` jest podyktowany testowalnością: SPM nie testuje sensownie targetów wykonywalnych, a cała logika wartościowa (parsowanie, kubełki, formatowanie) nie potrzebuje AppKit. `AppDelegate` zostaje cienki i weryfikowany end-to-end przez `verify-menu.sh`.
+The `VPNTimeCore` / `VPNTime` split is driven by testability: SPM does not test executable targets in any meaningful way, and all the valuable logic (parsing, buckets, formatting) does not need AppKit. `AppDelegate` stays thin and is verified end-to-end by `verify-menu.sh`.
 
 ---
 
-## Zadanie 1: Repo, dowody śledcze i backup danych
+## Task 1: Repo, forensic evidence and data backup
 
-Najpierw utrwalamy to, co odzyskane. Źródło zginęło raz przez efemeryczną lokalizację — pierwszy commit ma sprawić, żeby to się nie powtórzyło.
+First we persist what has been recovered. The source was lost once because of an ephemeral location — the first commit is meant to make sure that does not happen again.
 
 **Files:**
 - Create: `~/Projects/vpn-time/.gitignore`
@@ -227,10 +227,10 @@ Najpierw utrwalamy to, co odzyskane. Źródło zginęło raz przez efemeryczną 
 - Already present: `docs/superpowers/plans/2026-09-15-vpn-time-recreate.md`
 
 **Interfaces:**
-- Consumes: nic.
-- Produces: repo git z gałęzią `main`; `docs/recovered-api.md` jako spec dla Zadań 2–8.
+- Consumes: nothing.
+- Produces: a git repo with a `main` branch; `docs/recovered-api.md` as the spec for Tasks 2–8.
 
-- [ ] **Step 1: Zabezpiecz dane produkcyjne (przed czymkolwiek innym)**
+- [ ] **Step 1: Secure the production data (before anything else)**
 
 ```bash
 cp ~/.vpn-sessions.csv ~/.vpn-sessions.csv.bak-2026-09-15
@@ -238,9 +238,9 @@ cp ~/.vpn-sessions.state ~/.vpn-sessions.state.bak-2026-09-15 2>/dev/null || tru
 ls -la ~/.vpn-sessions.csv.bak-2026-09-15
 ```
 
-Oczekiwane: plik backupu istnieje i ma ten sam rozmiar co oryginał.
+Expected: the backup file exists and has the same size as the original.
 
-- [ ] **Step 2: Zainicjuj repo**
+- [ ] **Step 2: Initialize the repo**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -248,7 +248,7 @@ git init -b main
 printf '%s\n' '.build/' 'build/' '*.bak-*' '.DS_Store' > .gitignore
 ```
 
-- [ ] **Step 3: Zrzuć dowody z binarki do `docs/evidence/`**
+- [ ] **Step 3: Dump the evidence from the binary into `docs/evidence/`**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -264,9 +264,9 @@ strings -a "$B" | sort -u > docs/evidence/strings-2026-09-15.txt
 wc -l docs/evidence/symbols-2026-09-15.txt docs/evidence/strings-2026-09-15.txt
 ```
 
-Oczekiwane: `symbols-…txt` zawiera m.in. `vpntime.VPNStore.activeSession() -> (Foundation.Date, Swift.String)?`.
+Expected: `symbols-…txt` contains, among others, `vpntime.VPNStore.activeSession() -> (Foundation.Date, Swift.String)?`.
 
-- [ ] **Step 4: Zrzuć żywe menu starej apki (dopóki działa)**
+- [ ] **Step 4: Dump the live menu of the old app (while it still works)**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -288,13 +288,13 @@ end tell' > docs/evidence/menu-2026-09-15.txt
 cat docs/evidence/menu-2026-09-15.txt
 ```
 
-Oczekiwane: 14 pozycji menu, zaczynając od `[Czas na VPN]`.
+Expected: 14 menu entries, starting with `[Czas na VPN]` (Time on VPN).
 
-Jeżeli `osascript` zwróci `-1719` albo błąd uprawnień: w Ustawieniach → Prywatność i ochrona → Dostępność dodaj terminal/Claude Code. Bez tego Zadanie 2 i 12 nie mają jak zweryfikować parytetu.
+If `osascript` returns `-1719` or a permission error: in System Settings → Privacy & Security → Accessibility, add the terminal/Claude Code. Without it, Tasks 2 and 12 have no way to verify parity.
 
-- [ ] **Step 5: Napisz `docs/recovered-api.md`**
+- [ ] **Step 5: Write `docs/recovered-api.md`**
 
-Przepisz do niego sekcję „Odzyskana specyfikacja" z tego planu w całości (tabele stałych, ikon, menu, semantyka kubełków, format danych, odstępstwa) i dopisz nagłówek opisujący metodę odzyskania oraz datę. To jest spec — Zadania 2–8 się do niego odwołują.
+Copy the "Recovered specification" section of this plan into it in full (the tables of constants, icons, menu, bucket semantics, data format, deviations) and add a header describing the recovery method and the date. This is the spec — Tasks 2–8 refer to it.
 
 - [ ] **Step 6: Commit**
 
@@ -312,18 +312,18 @@ names, timer interval and AppKit constants by decoding immediates."
 
 ---
 
-## Zadanie 2: Smoke test parytetu menu, zwalidowany na oryginale
+## Task 2: Menu parity smoke test, validated on the original
 
-Ten test powstaje **zanim** pojawi się jakikolwiek nowy kod, i musi przejść na **starej** binarce. Test, który nigdy nie zaświecił się na zielono na znanym-dobrym systemie, nic nie dowodzi.
+This test is written **before** any new code appears, and it must pass on the **old** binary. A test that has never gone green on a known-good system proves nothing.
 
 **Files:**
 - Create: `~/Projects/vpn-time/tools/verify-menu.sh`
 
 **Interfaces:**
-- Consumes: `docs/evidence/menu-2026-09-15.txt` (kształt odniesienia).
-- Produces: `tools/verify-menu.sh` — używane w Zadaniu 12 (cutover) jako bramka akceptacji.
+- Consumes: `docs/evidence/menu-2026-09-15.txt` (reference shape).
+- Produces: `tools/verify-menu.sh` — used in Task 12 (cutover) as the acceptance gate.
 
-- [ ] **Step 1: Napisz `tools/verify-menu.sh`**
+- [ ] **Step 1: Write `tools/verify-menu.sh`**
 
 ```bash
 #!/bin/bash
@@ -402,16 +402,16 @@ fi
 exit "$fail"
 ```
 
-- [ ] **Step 2: Uruchom go na STAREJ, działającej apce**
+- [ ] **Step 2: Run it against the OLD, working app**
 
 ```bash
 chmod +x ~/Projects/vpn-time/tools/verify-menu.sh
 ~/Projects/vpn-time/tools/verify-menu.sh
 ```
 
-Oczekiwane: `OK: menu matches the recovered layout (14 entries)`.
+Expected: `OK: menu matches the recovered layout (14 entries)`.
 
-Jeśli test nie przechodzi na oryginale — **napraw test, nie oryginał.** Wzorce mają opisywać rzeczywistość, nie życzenia.
+If the test does not pass on the original — **fix the test, not the original.** The patterns must describe reality, not wishes.
 
 - [ ] **Step 3: Commit**
 
@@ -423,19 +423,19 @@ git commit -m "test: add menu parity smoke test, validated against the original 
 
 ---
 
-## Zadanie 3: Szkielet SPM + `Session` i `Bucket`
+## Task 3: SPM skeleton + `Session` and `Bucket`
 
 **Files:**
 - Create: `~/Projects/vpn-time/Package.swift`
 - Create: `~/Projects/vpn-time/Sources/VPNTimeCore/Session.swift`
 - Create: `~/Projects/vpn-time/Sources/VPNTimeCore/Bucket.swift`
-- Test: `~/Projects/vpn-time/Tests/VPNTimeCoreTests/TotalsTests.swift` (na razie tylko test kalendarza)
+- Test: `~/Projects/vpn-time/Tests/VPNTimeCoreTests/TotalsTests.swift` (only the calendar test for now)
 
 **Interfaces:**
-- Consumes: spec z Zadania 1.
-- Produces: `Session(start: Date, duration: Int)` z polami `start`/`duration`; `enum Bucket: Hashable { case today, week, month }`; `Calendar.vpnTimeISO`.
+- Consumes: the spec from Task 1.
+- Produces: `Session(start: Date, duration: Int)` with `start`/`duration` fields; `enum Bucket: Hashable { case today, week, month }`; `Calendar.vpnTimeISO`.
 
-- [ ] **Step 1: Napisz `Package.swift`**
+- [ ] **Step 1: Write `Package.swift`**
 
 ```swift
 // swift-tools-version: 6.0
@@ -460,9 +460,9 @@ let package = Package(
 )
 ```
 
-- [ ] **Step 2: Napisz test kalendarza (najpierw czerwony)**
+- [ ] **Step 2: Write the calendar test (red first)**
 
-Plik `Tests/VPNTimeCoreTests/TotalsTests.swift`:
+File `Tests/VPNTimeCoreTests/TotalsTests.swift`:
 
 ```swift
 import XCTest
@@ -477,15 +477,15 @@ final class TotalsTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 3: Uruchom test i potwierdź, że nie kompiluje**
+- [ ] **Step 3: Run the test and confirm it does not compile**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: błąd kompilacji — `cannot find 'Calendar.vpnTimeISO'` / brak modułu.
+Expected: a compilation error — `cannot find 'Calendar.vpnTimeISO'` / missing module.
 
-- [ ] **Step 4: Napisz `Sources/VPNTimeCore/Session.swift`**
+- [ ] **Step 4: Write `Sources/VPNTimeCore/Session.swift`**
 
 ```swift
 import Foundation
@@ -501,7 +501,7 @@ public struct Session {
 }
 ```
 
-- [ ] **Step 5: Napisz `Sources/VPNTimeCore/Bucket.swift`**
+- [ ] **Step 5: Write `Sources/VPNTimeCore/Bucket.swift`**
 
 ```swift
 import Foundation
@@ -521,13 +521,13 @@ public extension Calendar {
 }
 ```
 
-- [ ] **Step 6: Uruchom test i potwierdź, że przechodzi**
+- [ ] **Step 6: Run the test and confirm it passes**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `Executed 1 test, with 0 failures`.
+Expected: `Executed 1 test, with 0 failures`.
 
 - [ ] **Step 7: Commit**
 
@@ -539,19 +539,19 @@ git commit -m "feat: add SPM skeleton with Session and Bucket"
 
 ---
 
-## Zadanie 4: `VPNStore` — parsowanie CSV
+## Task 4: `VPNStore` — CSV parsing
 
 **Files:**
 - Create: `~/Projects/vpn-time/Sources/VPNTimeCore/VPNStore.swift`
 - Test: `~/Projects/vpn-time/Tests/VPNTimeCoreTests/VPNStoreTests.swift`
 
 **Interfaces:**
-- Consumes: `Session` z Zadania 3.
+- Consumes: `Session` from Task 3.
 - Produces: `VPNStore(csvPath:statePath:)`, `sessions() -> [Session]`, `activeSession() -> (Date, String)?`.
 
-- [ ] **Step 1: Napisz testy parsowania CSV (najpierw czerwone)**
+- [ ] **Step 1: Write the CSV parsing tests (red first)**
 
-Plik `Tests/VPNTimeCoreTests/VPNStoreTests.swift`:
+File `Tests/VPNTimeCoreTests/VPNStoreTests.swift`:
 
 ```swift
 import XCTest
@@ -634,17 +634,17 @@ final class VPNStoreTests: XCTestCase {
 }
 ```
 
-`Session` celowo nie jest `Equatable` (oryginał też nie był), dlatego pusty wynik sprawdzamy przez `isEmpty`, a nie przez porównanie z `[]`.
+`Session` is deliberately not `Equatable` (the original was not either), which is why an empty result is checked with `isEmpty` rather than by comparing with `[]`.
 
-- [ ] **Step 2: Uruchom testy i potwierdź, że nie kompilują**
+- [ ] **Step 2: Run the tests and confirm they do not compile**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `cannot find 'VPNStore' in scope`.
+Expected: `cannot find 'VPNStore' in scope`.
 
-- [ ] **Step 3: Napisz `Sources/VPNTimeCore/VPNStore.swift`**
+- [ ] **Step 3: Write `Sources/VPNTimeCore/VPNStore.swift`**
 
 ```swift
 import Foundation
@@ -710,13 +710,13 @@ public final class VPNStore {
 }
 ```
 
-- [ ] **Step 4: Uruchom testy i potwierdź, że przechodzą**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `Executed 5 tests, with 0 failures`.
+Expected: `Executed 5 tests, with 0 failures`.
 
 - [ ] **Step 5: Commit**
 
@@ -728,18 +728,18 @@ git commit -m "feat: parse the session CSV in VPNStore"
 
 ---
 
-## Zadanie 5: `VPNStore.activeSession()` — plik stanu
+## Task 5: `VPNStore.activeSession()` — state file
 
 **Files:**
 - Modify: `~/Projects/vpn-time/Tests/VPNTimeCoreTests/VPNStoreTests.swift`
 
 **Interfaces:**
-- Consumes: `VPNStore` z Zadania 4 (implementacja `activeSession()` już tam jest).
-- Produces: potwierdzony kontrakt `(Date, String)?`.
+- Consumes: `VPNStore` from Task 4 (the `activeSession()` implementation is already there).
+- Produces: a confirmed `(Date, String)?` contract.
 
-- [ ] **Step 1: Dopisz testy pliku stanu**
+- [ ] **Step 1: Add the state file tests**
 
-Dodaj do `VPNStoreTests`:
+Add to `VPNStoreTests`:
 
 ```swift
     func testReadsActiveSessionFromStateFile() throws {
@@ -759,13 +759,13 @@ Dodaj do `VPNStoreTests`:
     }
 ```
 
-- [ ] **Step 2: Uruchom testy**
+- [ ] **Step 2: Run the tests**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `Executed 8 tests, with 0 failures`. Jeśli któryś pada — poprawiamy `activeSession()`, nie test.
+Expected: `Executed 8 tests, with 0 failures`. If any of them fails — we fix `activeSession()`, not the test.
 
 - [ ] **Step 3: Commit**
 
@@ -777,9 +777,9 @@ git commit -m "test: cover the active-session state file contract"
 
 ---
 
-## Zadanie 6: `Totals` — sumowanie po kubełkach
+## Task 6: `Totals` — summing per bucket
 
-Najważniejsze zadanie pod względem parytetu. Semantyka „sesja należy do kubełka swojego początku" jest nieoczywista i została potwierdzona na żywym systemie — testy muszą ją zamrozić.
+The most important task in terms of parity. The "a session belongs to the bucket of its start" semantics is non-obvious and was confirmed on the live system — the tests must freeze it.
 
 **Files:**
 - Create: `~/Projects/vpn-time/Sources/VPNTimeCore/Totals.swift`
@@ -787,11 +787,11 @@ Najważniejsze zadanie pod względem parytetu. Semantyka „sesja należy do kub
 
 **Interfaces:**
 - Consumes: `Session`, `Bucket`, `Calendar.vpnTimeISO`.
-- Produces: `Totals(calendar:now:)` i `total(_ bucket: Bucket, sessions: [Session], active: (Date, String)?) -> Int`.
+- Produces: `Totals(calendar:now:)` and `total(_ bucket: Bucket, sessions: [Session], active: (Date, String)?) -> Int`.
 
-- [ ] **Step 1: Dopisz testy kubełków (najpierw czerwone)**
+- [ ] **Step 1: Add the bucket tests (red first)**
 
-Dodaj do `TotalsTests`:
+Add to `TotalsTests`:
 
 ```swift
     private let calendar = Calendar.vpnTimeISO
@@ -847,15 +847,15 @@ Dodaj do `TotalsTests`:
     }
 ```
 
-- [ ] **Step 2: Uruchom testy i potwierdź, że nie kompilują**
+- [ ] **Step 2: Run the tests and confirm they do not compile**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `cannot find 'Totals' in scope`.
+Expected: `cannot find 'Totals' in scope`.
 
-- [ ] **Step 3: Napisz `Sources/VPNTimeCore/Totals.swift`**
+- [ ] **Step 3: Write `Sources/VPNTimeCore/Totals.swift`**
 
 ```swift
 import Foundation
@@ -894,13 +894,13 @@ public struct Totals {
 }
 ```
 
-- [ ] **Step 4: Uruchom testy i potwierdź, że przechodzą**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `Executed 12 tests, with 0 failures`.
+Expected: `Executed 12 tests, with 0 failures`.
 
 - [ ] **Step 5: Commit**
 
@@ -912,19 +912,19 @@ git commit -m "feat: bucket session totals by the day the session started"
 
 ---
 
-## Zadanie 7: Formatowanie czasu
+## Task 7: Time formatting
 
 **Files:**
 - Create: `~/Projects/vpn-time/Sources/VPNTimeCore/TimeFormat.swift`
 - Test: `~/Projects/vpn-time/Tests/VPNTimeCoreTests/TimeFormatTests.swift`
 
 **Interfaces:**
-- Consumes: nic.
-- Produces: `hoursMinutes(_ seconds: Int) -> String` („`250h 48m`"), `counter(_ seconds: Int) -> String` („` 120:47`", z wiodącą spacją).
+- Consumes: nothing.
+- Produces: `hoursMinutes(_ seconds: Int) -> String` ("`250h 48m`"), `counter(_ seconds: Int) -> String` ("` 120:47`", with a leading space).
 
-- [ ] **Step 1: Napisz testy (najpierw czerwone)**
+- [ ] **Step 1: Write the tests (red first)**
 
-Plik `Tests/VPNTimeCoreTests/TimeFormatTests.swift`:
+File `Tests/VPNTimeCoreTests/TimeFormatTests.swift`:
 
 ```swift
 import XCTest
@@ -949,15 +949,15 @@ final class TimeFormatTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Uruchom testy i potwierdź, że nie kompilują**
+- [ ] **Step 2: Run the tests and confirm they do not compile**
 
 ```bash
 cd ~/Projects/vpn-time && swift test --filter TimeFormatTests 2>&1 | tail -20
 ```
 
-Oczekiwane: `cannot find 'hoursMinutes' in scope`.
+Expected: `cannot find 'hoursMinutes' in scope`.
 
-- [ ] **Step 3: Napisz `Sources/VPNTimeCore/TimeFormat.swift`**
+- [ ] **Step 3: Write `Sources/VPNTimeCore/TimeFormat.swift`**
 
 ```swift
 import Foundation
@@ -971,13 +971,13 @@ public func counter(_ seconds: Int) -> String {
 }
 ```
 
-- [ ] **Step 4: Uruchom testy i potwierdź, że przechodzą**
+- [ ] **Step 4: Run the tests and confirm they pass**
 
 ```bash
 cd ~/Projects/vpn-time && swift test 2>&1 | tail -20
 ```
 
-Oczekiwane: `Executed 15 tests, with 0 failures`.
+Expected: `Executed 15 tests, with 0 failures`.
 
 - [ ] **Step 5: Commit**
 
@@ -989,9 +989,9 @@ git commit -m "feat: format bucket totals and the status bar counter"
 
 ---
 
-## Zadanie 8: `AppDelegate` i `main.swift`
+## Task 8: `AppDelegate` and `main.swift`
 
-Warstwa AppKit. Nie ma tu testów jednostkowych — weryfikacją jest `tools/verify-menu.sh` w Zadaniu 12.
+The AppKit layer. There are no unit tests here — verification is `tools/verify-menu.sh` in Task 12.
 
 **Files:**
 - Create: `~/Projects/vpn-time/Sources/VPNTime/AppDelegate.swift`
@@ -999,9 +999,9 @@ Warstwa AppKit. Nie ma tu testów jednostkowych — weryfikacją jest `tools/ver
 
 **Interfaces:**
 - Consumes: `VPNStore`, `Totals`, `Bucket`, `hoursMinutes(_:)`, `counter(_:)`.
-- Produces: wykonywalny target `VPNTime` (binarka `.build/release/VPNTime`).
+- Produces: the executable target `VPNTime` (binary `.build/release/VPNTime`).
 
-- [ ] **Step 1: Napisz `Sources/VPNTime/AppDelegate.swift`**
+- [ ] **Step 1: Write `Sources/VPNTime/AppDelegate.swift`**
 
 ```swift
 import AppKit
@@ -1155,9 +1155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 ```
 
-Uwaga do `ProgramArguments`: ścieżka bierze się z `Bundle.main.bundlePath`, nie z literału — apka może stać gdzie indziej niż `~/Applications`, a plist launchd nie rozwija `~`.
+Note on `ProgramArguments`: the path comes from `Bundle.main.bundlePath`, not from a literal — the app may live somewhere other than `~/Applications`, and a launchd plist does not expand `~`.
 
-- [ ] **Step 2: Napisz `Sources/VPNTime/main.swift`**
+- [ ] **Step 2: Write `Sources/VPNTime/main.swift`**
 
 ```swift
 import AppKit
@@ -1170,14 +1170,14 @@ app.setActivationPolicy(.accessory)
 app.run()
 ```
 
-- [ ] **Step 3: Zbuduj i potwierdź, że kompiluje**
+- [ ] **Step 3: Build and confirm it compiles**
 
 ```bash
 cd ~/Projects/vpn-time && swift build -c release 2>&1 | tail -20
 ls -la .build/release/VPNTime
 ```
 
-Oczekiwane: build bez błędów, binarka istnieje.
+Expected: the build has no errors, the binary exists.
 
 - [ ] **Step 4: Commit**
 
@@ -1189,17 +1189,17 @@ git commit -m "feat: rebuild the status bar UI on top of VPNTimeCore"
 
 ---
 
-## Zadanie 9: `Info.plist`, `build.sh` i montaż bundla
+## Task 9: `Info.plist`, `build.sh` and bundle assembly
 
 **Files:**
 - Create: `~/Projects/vpn-time/bundle/Info.plist`
 - Create: `~/Projects/vpn-time/build.sh`
 
 **Interfaces:**
-- Consumes: target `VPNTime` z Zadania 8.
-- Produces: `build/VPN Time.app` — kompletny, podpisany ad-hoc bundle; używany przez `install.sh` w Zadaniu 11.
+- Consumes: the `VPNTime` target from Task 8.
+- Produces: `build/VPN Time.app` — a complete, ad-hoc signed bundle; used by `install.sh` in Task 11.
 
-- [ ] **Step 1: Napisz `bundle/Info.plist` (kopia oryginału, bez zmian)**
+- [ ] **Step 1: Write `bundle/Info.plist` (a copy of the original, unchanged)**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1230,7 +1230,7 @@ git commit -m "feat: rebuild the status bar UI on top of VPNTimeCore"
 </plist>
 ```
 
-- [ ] **Step 2: Napisz `build.sh`**
+- [ ] **Step 2: Write `build.sh`**
 
 ```bash
 #!/bin/bash
@@ -1254,18 +1254,18 @@ codesign -dv "$APP" 2>&1 | grep -E 'Identifier|flags'
 echo "built: $APP"
 ```
 
-- [ ] **Step 3: Zbuduj i zweryfikuj bundle**
+- [ ] **Step 3: Build and verify the bundle**
 
 ```bash
 chmod +x ~/Projects/vpn-time/build.sh
 ~/Projects/vpn-time/build.sh
 ```
 
-Oczekiwane: `Identifier=com.redge.vpntimebar`, `flags=0x2(adhoc)`, `built: build/VPN Time.app`.
+Expected: `Identifier=com.redge.vpntimebar`, `flags=0x2(adhoc)`, `built: build/VPN Time.app`.
 
-- [ ] **Step 4: Smoke test bez ruszania instalacji produkcyjnej**
+- [ ] **Step 4: Smoke test without touching the production installation**
 
-Uruchom **binarkę wprost**, nie przez `open` — `open` tego samego bundle id tylko aktywuje starą instancję zamiast wystartować nową. Zapamiętaj PID: `kill %1` nie zadziała, bo powłoka wykonawcy planu nie ma kontroli zadań.
+Run **the binary directly**, not via `open` — `open` on the same bundle id only activates the old instance instead of starting a new one. Remember the PID: `kill %1` will not work, because the plan executor's shell has no job control.
 
 ```bash
 OLD_PID="$(pgrep -x vpntime | head -1)"
@@ -1276,11 +1276,11 @@ pgrep -x vpntime | wc -l
 echo "old=$OLD_PID new=$NEW_PID"
 ```
 
-Oczekiwane: `2` (dwie kłódki w pasku menu).
+Expected: `2` (two padlocks in the menu bar).
 
-**Nie klikaj „Uruchamiaj przy logowaniu" w trakcie tego testu** — `Bundle.main.bundlePath` zapisałby wtedy plist wskazujący na `build/` zamiast na zainstalowaną apkę.
+**Do not click "Uruchamiaj przy logowaniu" (Launch at login) during this test** — `Bundle.main.bundlePath` would then write a plist pointing at `build/` instead of the installed app.
 
-Porównaj menu obu instancji automatycznie, zamiast oglądać je okiem. Przy dwóch procesach o tej samej nazwie `process "vpntime"` jest niejednoznaczne, więc adresujemy je po PID:
+Compare the menus of both instances automatically instead of eyeballing them. With two processes of the same name, `process "vpntime"` is ambiguous, so we address them by PID:
 
 ```bash
 read_menu_of() {
@@ -1302,9 +1302,9 @@ read_menu_of() {
 diff <(read_menu_of "$OLD_PID") <(read_menu_of "$NEW_PID") && echo "PARITY OK"
 ```
 
-Oczekiwane: `PARITY OK`. Jedyna dopuszczalna różnica to licznik minut w kubełkach, gdy między dwoma odczytami przeskoczyła pełna minuta — powtórz wtedy `diff`.
+Expected: `PARITY OK`. The only acceptable difference is the minute counter in the buckets when a full minute ticked over between the two reads — in that case repeat the `diff`.
 
-Ubij **tylko** nową instancję:
+Kill **only** the new instance:
 
 ```bash
 kill "$NEW_PID"
@@ -1312,7 +1312,7 @@ sleep 1
 pgrep -x vpntime | wc -l
 ```
 
-Oczekiwane: `1`.
+Expected: `1`.
 
 - [ ] **Step 5: Commit**
 
@@ -1324,20 +1324,20 @@ git commit -m "build: assemble and ad-hoc sign the app bundle"
 
 ---
 
-## Zadanie 10: Skrypty bash do repo + ich testy
+## Task 10: Bash scripts into the repo + their tests
 
 **Files:**
-- Create: `~/Projects/vpn-time/scripts/vpn-track.sh` (z `~/.local/bin/vpn-track.sh` + wstrzykiwalne zależności)
-- Create: `~/Projects/vpn-time/scripts/vpn-report.sh` (kopia 1:1 z `~/.local/bin/vpn-report.sh`)
+- Create: `~/Projects/vpn-time/scripts/vpn-track.sh` (from `~/.local/bin/vpn-track.sh` + injectable dependencies)
+- Create: `~/Projects/vpn-time/scripts/vpn-report.sh` (a 1:1 copy of `~/.local/bin/vpn-report.sh`)
 - Create: `~/Projects/vpn-time/test/test-vpn-track.sh`
 - Create: `~/Projects/vpn-time/test/test-vpn-report.sh`
 - Create: `~/Projects/vpn-time/test/run-tests.sh`
 
 **Interfaces:**
-- Consumes: nic z Swift.
-- Produces: skrypty instalowane przez `install.sh` do `~/.local/bin/`.
+- Consumes: nothing from Swift.
+- Produces: scripts installed by `install.sh` into `~/.local/bin/`.
 
-- [ ] **Step 1: Skopiuj skrypty do repo bez zmian i zacommituj jako punkt odniesienia**
+- [ ] **Step 1: Copy the scripts into the repo unchanged and commit them as a baseline**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -1349,11 +1349,11 @@ git add scripts
 git commit -m "chore: vendor the tracker shell scripts verbatim"
 ```
 
-Osobny commit ma znaczenie: następny diff pokazuje dokładnie, co zmieniło się względem działającego oryginału.
+The separate commit matters: the next diff shows exactly what changed relative to the working original.
 
-- [ ] **Step 2: Napisz test `vpn-report.sh` (najpierw czerwony — plik jeszcze nie istnieje)**
+- [ ] **Step 2: Write the `vpn-report.sh` test (red first — the file does not exist yet)**
 
-Plik `test/test-vpn-report.sh`:
+File `test/test-vpn-report.sh`:
 
 ```bash
 #!/bin/bash
@@ -1411,36 +1411,36 @@ assert_contains "$out" "Aktywna sesja (Office_VPN): 2h 00m" "active session line
 exit "$fail"
 ```
 
-Arytmetyka za tymi wartościami (sekundy obcinane w dół, `%-14s` daje odstęp między kolumnami): 839 + 31399 = 32238 s = 8 h 57 m 18 s → `8h 57m`; 3600 s → `1h 00m`; 32238 + 3600 = 35838 s = 9 h 57 m 18 s → `9h 57m`.
+The arithmetic behind these values (seconds truncated down, `%-14s` provides the gap between columns): 839 + 31399 = 32238 s = 8 h 57 m 18 s → `8h 57m`; 3600 s → `1h 00m`; 32238 + 3600 = 35838 s = 9 h 57 m 18 s → `9h 57m`.
 
-- [ ] **Step 3: Uruchom test `vpn-report.sh` i potwierdź, że przechodzi**
+- [ ] **Step 3: Run the `vpn-report.sh` test and confirm it passes**
 
 ```bash
 chmod +x ~/Projects/vpn-time/test/test-vpn-report.sh
 ~/Projects/vpn-time/test/test-vpn-report.sh
 ```
 
-Oczekiwane: same linie `ok:`, kod wyjścia 0. `vpn-report.sh` nie wymagał zmian — czyta wyłącznie `$HOME`.
+Expected: only `ok:` lines, exit code 0. `vpn-report.sh` needed no changes — it reads only `$HOME`.
 
-- [ ] **Step 4: Dodaj wstrzykiwalne zależności do `scripts/vpn-track.sh`**
+- [ ] **Step 4: Add injectable dependencies to `scripts/vpn-track.sh`**
 
-Zmień dokładnie dwie linie:
+Change exactly two lines:
 
 ```bash
 LOGDIR="${VPN_TRACK_LOGDIR:-/Library/Application Support/Tunnelblick/Logs}"
 ```
 
-oraz
+and
 
 ```bash
 running_cmd="$(${VPN_TRACK_PS_CMD:-ps -axww -o command=} | grep 'Tunnelblick.app/Contents/Resources/openvpn' | grep -v grep | head -1)"
 ```
 
-Reszta skryptu bez zmian.
+The rest of the script stays unchanged.
 
-- [ ] **Step 5: Napisz test `vpn-track.sh`**
+- [ ] **Step 5: Write the `vpn-track.sh` test**
 
-Plik `test/test-vpn-track.sh`:
+File `test/test-vpn-track.sh`:
 
 ```bash
 #!/bin/bash
@@ -1512,16 +1512,16 @@ assert_eq "$(wc -l < "$HOME/.vpn-sessions.csv")" "$rows_before" "no extra row"
 exit "$fail"
 ```
 
-- [ ] **Step 6: Uruchom test `vpn-track.sh`**
+- [ ] **Step 6: Run the `vpn-track.sh` test**
 
 ```bash
 chmod +x ~/Projects/vpn-time/test/test-vpn-track.sh
 ~/Projects/vpn-time/test/test-vpn-track.sh
 ```
 
-Oczekiwane: same `ok:`, kod wyjścia 0.
+Expected: only `ok:`, exit code 0.
 
-- [ ] **Step 7: Napisz `test/run-tests.sh`**
+- [ ] **Step 7: Write `test/run-tests.sh`**
 
 ```bash
 #!/bin/bash
@@ -1548,14 +1548,14 @@ fi
 exit "$status"
 ```
 
-- [ ] **Step 8: Uruchom całą suitę**
+- [ ] **Step 8: Run the whole suite**
 
 ```bash
 chmod +x ~/Projects/vpn-time/test/run-tests.sh
 ~/Projects/vpn-time/test/run-tests.sh
 ```
 
-Oczekiwane: `ALL TESTS PASSED`.
+Expected: `ALL TESTS PASSED`.
 
 - [ ] **Step 9: Commit**
 
@@ -1570,7 +1570,7 @@ poller can run against a fake process list and log directory."
 
 ---
 
-## Zadanie 11: Szablony launchd i `install.sh`
+## Task 11: launchd templates and `install.sh`
 
 **Files:**
 - Create: `~/Projects/vpn-time/launchd/com.redge.vpntrack.plist.template`
@@ -1578,10 +1578,10 @@ poller can run against a fake process list and log directory."
 - Create: `~/Projects/vpn-time/install.sh`
 
 **Interfaces:**
-- Consumes: `build/VPN Time.app` (Zadanie 9), `scripts/*.sh` (Zadanie 10).
-- Produces: `install.sh` używany w Zadaniu 12.
+- Consumes: `build/VPN Time.app` (Task 9), `scripts/*.sh` (Task 10).
+- Produces: `install.sh` used in Task 12.
 
-- [ ] **Step 1: Napisz `launchd/com.redge.vpntrack.plist.template`**
+- [ ] **Step 1: Write `launchd/com.redge.vpntrack.plist.template`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1605,7 +1605,7 @@ poller can run against a fake process list and log directory."
 </plist>
 ```
 
-- [ ] **Step 2: Napisz `launchd/com.redge.vpntimebar.plist.template`**
+- [ ] **Step 2: Write `launchd/com.redge.vpntimebar.plist.template`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1623,9 +1623,9 @@ poller can run against a fake process list and log directory."
 </plist>
 ```
 
-`ProgramArguments` używa `/usr/bin/open`, a nie binarki wprost — dzięki temu job kończy się natychmiast, apka żyje odłączona jako `application.com.redge.vpntimebar…`, a przełącznik „Uruchamiaj przy logowaniu" może load/unload agenta bez ubijania działającej apki. Nie ma tu `KeepAlive`.
+`ProgramArguments` uses `/usr/bin/open`, not the binary directly — this way the job exits immediately, the app lives detached as `application.com.redge.vpntimebar…`, and the "Uruchamiaj przy logowaniu" toggle can load/unload the agent without killing the running app. There is no `KeepAlive` here.
 
-- [ ] **Step 3: Napisz `install.sh`**
+- [ ] **Step 3: Write `install.sh`**
 
 ```bash
 #!/bin/bash
@@ -1682,7 +1682,7 @@ echo "== done =="
 launchctl list | grep -E 'com\.redge\.vpn' || true
 ```
 
-- [ ] **Step 4: Sprawdź renderowanie plistów bez instalowania**
+- [ ] **Step 4: Check plist rendering without installing**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -1690,7 +1690,7 @@ sed "s|__HOME__|$HOME|g" launchd/com.redge.vpntrack.plist.template | diff - ~/Li
 sed "s|__HOME__|$HOME|g" launchd/com.redge.vpntimebar.plist.template | diff - ~/Library/LaunchAgents/com.redge.vpntimebar.plist && echo "vpntimebar: identyczny"
 ```
 
-Oczekiwane: oba `identyczny`. Jeśli `diff` coś pokaże, poprawiamy **szablon**, żeby był bajt w bajt taki jak działający plist.
+Expected: both print `identyczny` (identical). If `diff` shows anything, we fix the **template** so that it is byte-for-byte the same as the working plist.
 
 - [ ] **Step 5: Commit**
 
@@ -1703,17 +1703,17 @@ git commit -m "build: add launchd templates and an idempotent installer"
 
 ---
 
-## Zadanie 12: Cutover — podmiana działającej instalacji
+## Task 12: Cutover — replacing the working installation
 
-Do tego momentu produkcyjna instalacja była nietknięta. Teraz podmieniamy ją w kontrolowanej kolejności. `com.redge.vpntrack` przeładowujemy dopiero na końcu i tylko dlatego, że skrypt dostał nowe zmienne — dane w CSV nie mogą ucierpieć.
+Up to this point the production installation was untouched. Now we replace it in a controlled order. `com.redge.vpntrack` is reloaded only at the very end, and only because the script gained new variables — the CSV data must not suffer.
 
-**Files:** brak nowych; wykonanie `install.sh` i `tools/verify-menu.sh`.
+**Files:** none new; running `install.sh` and `tools/verify-menu.sh`.
 
 **Interfaces:**
-- Consumes: wszystko z Zadań 9–11.
-- Produces: `~/Applications/VPN Time.app` zbudowany z repo, zweryfikowany parytet menu.
+- Consumes: everything from Tasks 9–11.
+- Produces: `~/Applications/VPN Time.app` built from the repo, menu parity verified.
 
-- [ ] **Step 1: Zapisz stan sprzed podmiany**
+- [ ] **Step 1: Record the pre-swap state**
 
 ```bash
 ~/Projects/vpn-time/tools/verify-menu.sh
@@ -1722,26 +1722,26 @@ md5 ~/.vpn-sessions.csv
 cat ~/.vpn-sessions.state 2>/dev/null || echo "(VPN disconnected)"
 ```
 
-Zanotuj liczbę linii, sumę MD5 i stan — to punkt odniesienia dla Kroku 4.
+Note down the line count, the MD5 checksum and the state — this is the baseline for Step 4.
 
-- [ ] **Step 2: Pełna suita testów przed podmianą**
+- [ ] **Step 2: Full test suite before the swap**
 
 ```bash
 ~/Projects/vpn-time/test/run-tests.sh
 ```
 
-Oczekiwane: `ALL TESTS PASSED`. Jeżeli nie — **stop**, cutover się nie odbywa.
+Expected: `ALL TESTS PASSED`. If not — **stop**, the cutover does not happen.
 
-- [ ] **Step 3: Zbuduj i zainstaluj**
+- [ ] **Step 3: Build and install**
 
 ```bash
 ~/Projects/vpn-time/build.sh
 ~/Projects/vpn-time/install.sh
 ```
 
-Oczekiwane: `launchctl list` pokazuje `com.redge.vpntrack` i `com.redge.vpntimebar`.
+Expected: `launchctl list` shows `com.redge.vpntrack` and `com.redge.vpntimebar`.
 
-- [ ] **Step 4: Zweryfikuj parytet i nienaruszalność danych**
+- [ ] **Step 4: Verify parity and data integrity**
 
 ```bash
 sleep 5
@@ -1751,24 +1751,24 @@ wc -l ~/.vpn-sessions.csv
 md5 ~/.vpn-sessions.csv
 ```
 
-Oczekiwane: dokładnie jeden proces `vpntime`; `OK: menu matches the recovered layout (14 entries)`; liczba linii i MD5 CSV **niezmienione** względem Kroku 1 (chyba że VPN rozłączył się w międzyczasie — wtedy dokładnie o jedną linię więcej i to jest poprawne).
+Expected: exactly one `vpntime` process; `OK: menu matches the recovered layout (14 entries)`; the CSV line count and MD5 **unchanged** compared with Step 1 (unless the VPN disconnected in the meantime — then exactly one more line, and that is correct).
 
-- [ ] **Step 5: Zweryfikuj przełącznik autostartu**
+- [ ] **Step 5: Verify the autostart toggle**
 
-W menu paska kliknij „Uruchamiaj przy logowaniu" (odznaczy się), potem jeszcze raz (zaznaczy). Po każdym kliknięciu:
+In the menu bar menu click "Uruchamiaj przy logowaniu" (it gets unchecked), then once more (it gets checked). After each click:
 
 ```bash
 ls -la ~/Library/LaunchAgents/com.redge.vpntimebar.plist 2>/dev/null || echo "(plist removed)"
 pgrep -x vpntime | wc -l
 ```
 
-Oczekiwane: plist znika i wraca, a apka **przez cały czas działa** (`1`). Jeśli apka ginie przy unload — plist jest zły (`ProgramArguments` musi wskazywać `/usr/bin/open`, nie binarkę).
+Expected: the plist disappears and comes back, and the app **keeps running the whole time** (`1`). If the app dies on unload — the plist is wrong (`ProgramArguments` must point at `/usr/bin/open`, not at the binary).
 
-- [ ] **Step 6: Zweryfikuj „Pokaż plik z historią" i „Odśwież"**
+- [ ] **Step 6: Verify "Pokaż plik z historią" (Show history file) and "Odśwież" (Refresh)**
 
-Kliknij obie pozycje. Oczekiwane: Finder otwiera katalog domowy z zaznaczonym `.vpn-sessions.csv`; „Odśwież" przelicza menu bez migotania ikony.
+Click both entries. Expected: Finder opens the home directory with `.vpn-sessions.csv` selected; "Odśwież" recalculates the menu without the icon flickering.
 
-- [ ] **Step 7: Commit stanu weryfikacji**
+- [ ] **Step 7: Commit the verification state**
 
 ```bash
 cd ~/Projects/vpn-time
@@ -1781,7 +1781,7 @@ killing the running app."
 
 ---
 
-## Zadanie 13: README i aktualizacja pamięci
+## Task 13: README and memory update
 
 **Files:**
 - Create: `~/Projects/vpn-time/README.md`
@@ -1789,34 +1789,34 @@ killing the running app."
 - Modify: `~/.claude/projects/-Users-redge/memory/MEMORY.md`
 
 **Interfaces:**
-- Consumes: całość.
-- Produces: dokumentacja i wskaźnik z pamięci na repo.
+- Consumes: everything.
+- Produces: documentation and a pointer from memory to the repo.
 
-- [ ] **Step 1: Napisz `README.md`**
+- [ ] **Step 1: Write `README.md`**
 
-Ma zawierać, w tej kolejności:
-1. Po co to jest — Tunnelblick nie zapisuje sumarycznego czasu (log per-połączenie jest nadpisywany, unified log macOS ma retencję ~2 dni).
-2. Architektura — poller jako źródło danych (działa niezależnie od apki), apka jako widok czytający CSV + plik stanu.
-3. Komponenty i ich ścieżki docelowe (`~/.local/bin/vpn-track.sh`, `~/.local/bin/vpn-report.sh`, `~/Applications/VPN Time.app`, oba agenty launchd).
-4. Instalacja: `./build.sh && ./install.sh`.
-5. Testy: `./test/run-tests.sh` oraz `./tools/verify-menu.sh` (wymaga uprawnienia Dostępność).
-6. Aliasy w `~/.zshrc` — **już istnieją** (linie 196–198), dopisz tylko przy świeżej instalacji na innej maszynie:
+It must contain, in this order:
+1. What it is for — Tunnelblick does not record cumulative time (the per-connection log is overwritten, the macOS unified log has ~2 days of retention).
+2. Architecture — the poller as the data source (runs independently of the app), the app as a view reading the CSV + state file.
+3. Components and their target paths (`~/.local/bin/vpn-track.sh`, `~/.local/bin/vpn-report.sh`, `~/Applications/VPN Time.app`, both launchd agents).
+4. Installation: `./build.sh && ./install.sh`.
+5. Tests: `./test/run-tests.sh` and `./tools/verify-menu.sh` (requires the Accessibility permission).
+6. Aliases in `~/.zshrc` — **already exist** (lines 196–198), add them only on a fresh install on another machine:
    ```
    alias vpntime='~/.local/bin/vpn-report.sh'
    alias vpntime-week='~/.local/bin/vpn-report.sh week'
    alias vpntime-month='~/.local/bin/vpn-report.sh month'
    ```
-7. Wyłączanie: `launchctl unload ~/Library/LaunchAgents/com.redge.vpntimebar.plist` (pasek) / `...com.redge.vpntrack.plist` (zbieranie).
-8. Znane ograniczenia: historia od 2026-07-08, dokładność końca sesji ±30 s (interwał pollingu), start dokładny z logu openvpn, sesja liczy się w całości do dnia swojego początku, wiersz „od HH:mm" nie pokazuje daty przy sesjach wielodniowych.
-9. Sekcja „Jak powstało to repo" — link do `docs/recovered-api.md` i planu.
+7. Disabling: `launchctl unload ~/Library/LaunchAgents/com.redge.vpntimebar.plist` (menu bar) / `...com.redge.vpntrack.plist` (data collection).
+8. Known limitations: history since 2026-07-08, session end accuracy ±30 s (polling interval), exact start taken from the openvpn log, a session counts entirely towards the day it started, the "od HH:mm" (since HH:mm) row does not show the date for multi-day sessions.
+9. A "How this repo came to be" section — a link to `docs/recovered-api.md` and the plan.
 
-- [ ] **Step 2: Zaktualizuj notatkę pamięci**
+- [ ] **Step 2: Update the memory note**
 
-W `~/.claude/projects/-Users-redge/memory/vpn-time-tracker.md` zamień zdanie „Źródło: build w scratchpad `vpnbuild/main.swift`" na wskazanie repo `~/Projects/vpn-time` i dopisz, że binarka jest budowana przez `./build.sh`, a instalowana przez `./install.sh`. Reszta notatki (architektura, mechanika autostartu, ograniczenia) zostaje bez zmian — jest nadal aktualna.
+In `~/.claude/projects/-Users-redge/memory/vpn-time-tracker.md` replace the sentence "Źródło: build w scratchpad `vpnbuild/main.swift`" (Source: build in scratchpad …) with a pointer to the repo `~/Projects/vpn-time`, and add that the binary is built by `./build.sh` and installed by `./install.sh`. The rest of the note (architecture, autostart mechanics, limitations) stays unchanged — it is still accurate.
 
-- [ ] **Step 3: Zaktualizuj `MEMORY.md`**
+- [ ] **Step 3: Update `MEMORY.md`**
 
-Zmień hook przy „VPN time tracker" tak, żeby wskazywał repo:
+Change the hook for "VPN time tracker" so that it points to the repo:
 
 ```
 - [VPN time tracker](vpn-time-tracker.md) — własny tracker czasu Tunnelblick VPN; źródła w ~/Projects/vpn-time (odtworzone 2026-09-15 z binarki)
@@ -1831,37 +1831,37 @@ git commit -m "docs: document the architecture, install flow and known limits"
 git log --oneline
 ```
 
-Oczekiwane: 15 commitów, od `docs: recover VPN Time app spec…` do `docs: document…`.
+Expected: 15 commits, from `docs: recover VPN Time app spec…` to `docs: document…`.
 
 ---
 
-## Zadanie 14 (opcjonalne, poza zakresem odtworzenia): dzielenie sesji na północy
+## Task 14 (optional, outside the recreation scope): splitting sessions at midnight
 
-Nie wykonuj tego razem z Zadaniami 1–13. To zmiana zachowania, nie odtworzenie — powinna mieć własną decyzję i własny commit, żeby dało się ją cofnąć bez ruszania parytetu.
+Do not do this together with Tasks 1–13. It is a behaviour change, not a recreation — it should get its own decision and its own commit, so it can be reverted without touching parity.
 
-Obecnie sesja 2026-09-07 07:31 → 2026-09-09 18:31 (212380 s) liczy się w całości do 7 września, przez co `Dziś` potrafi pokazywać `0h 00m` mimo aktywnego VPN-a. Gdyby to miało się zmienić:
-- rozszerzyć `Totals.total` o dzielenie przedziału `[start, start+duration)` po granicach kubełka,
-- `vpn-report.sh` musiałby dostać tę samą logikę, inaczej apka i CLI zaczną pokazywać różne liczby,
-- testy z Zadania 6 (`testMultiDaySessionCountsWhollyIntoItsStartDay`) trzeba wtedy świadomie przepisać — ich upadek jest sygnałem, że zmiana zachowania jest zamierzona, a nie regresją.
+Currently the session 2026-09-07 07:31 → 2026-09-09 18:31 (212380 s) counts entirely towards 7 September, which is why `Dziś` (Today) can show `0h 00m` even with an active VPN. If this were to change:
+- extend `Totals.total` to split the interval `[start, start+duration)` at bucket boundaries,
+- `vpn-report.sh` would need the same logic, otherwise the app and the CLI will start showing different numbers,
+- the tests from Task 6 (`testMultiDaySessionCountsWhollyIntoItsStartDay`) would then have to be rewritten deliberately — their failure is the signal that the behaviour change is intended and not a regression.
 
 ---
 
-## Kolejność i punkty kontrolne
+## Order and checkpoints
 
-| # | Zadanie | Bramka |
+| # | Task | Gate |
 |---|---|---|
-| 1 | Repo, dowody, backup | backup CSV istnieje, `git log` ma 1 commit |
-| 2 | Smoke test menu | **przechodzi na starej binarce** |
-| 3 | SPM + Session/Bucket | `swift test` zielony (1) |
-| 4 | VPNStore — CSV | `swift test` zielony (5) |
-| 5 | VPNStore — state | `swift test` zielony (8) |
-| 6 | Totals | `swift test` zielony (12) |
-| 7 | TimeFormat | `swift test` zielony (15) |
-| 8 | AppDelegate + main | `swift build -c release` przechodzi |
-| 9 | build.sh + bundle | dwie instancje obok siebie wyglądają tak samo |
-| 10 | Skrypty + testy bash | `run-tests.sh` → `ALL TESTS PASSED` |
-| 11 | launchd + install.sh | wyrenderowane plisty `diff`-ują się do zera |
-| 12 | Cutover | `verify-menu.sh` OK, MD5 CSV bez zmian |
-| 13 | README + pamięć | `git log` 15 commitów |
+| 1 | Repo, evidence, backup | CSV backup exists, `git log` has 1 commit |
+| 2 | Menu smoke test | **passes on the old binary** |
+| 3 | SPM + Session/Bucket | `swift test` green (1) |
+| 4 | VPNStore — CSV | `swift test` green (5) |
+| 5 | VPNStore — state | `swift test` green (8) |
+| 6 | Totals | `swift test` green (12) |
+| 7 | TimeFormat | `swift test` green (15) |
+| 8 | AppDelegate + main | `swift build -c release` passes |
+| 9 | build.sh + bundle | two instances side by side look the same |
+| 10 | Scripts + bash tests | `run-tests.sh` → `ALL TESTS PASSED` |
+| 11 | launchd + install.sh | rendered plists `diff` to zero |
+| 12 | Cutover | `verify-menu.sh` OK, CSV MD5 unchanged |
+| 13 | README + memory | `git log` 15 commits |
 
-Zadania 3–7 są od siebie zależne sekwencyjnie (każde buduje na typach poprzedniego). Zadanie 10 jest niezależne od 3–9 i może iść równolegle. Zadanie 2 musi się wydarzyć, **dopóki stara apka działa** — po Zadaniu 12 nie ma już do czego porównywać.
+Tasks 3–7 depend on each other sequentially (each builds on the types of the previous one). Task 10 is independent of 3–9 and can run in parallel. Task 2 must happen **while the old app still works** — after Task 12 there is nothing left to compare against.
