@@ -1,0 +1,123 @@
+/* VPN Time UI strings (English, development region). Keys must match the other .lproj; see L10nTests. */
+
+/* Menu bar */
+"icon.vpnOn" = "VPN on";
+"icon.vpnOff" = "VPN off";
+"tooltip.vpnActive" = "VPN active: %@";
+"tooltip.vpnDisconnected" = "VPN disconnected";
+"menu.title" = "VPN time";
+"menu.today" = "Today:           %@";
+"menu.thisWeek" = "This week:     %@";
+"menu.thisMonth" = "This month:  %@";
+"menu.connected" = "● Connected (%1$@) since %2$@";
+"menu.disconnected" = "○ Disconnected";
+"menu.worked.none" = "Work: not detected";
+"menu.worked.range" = "Work %1$@–%2$@ (%3$@) · %4$@";
+"menu.worked.since" = "Work since %1$@ (%2$@) · %3$@";
+"menu.launchAtLogin" = "Launch at login";
+"menu.workStart" = "Start of work: %@";
+"menu.workStart.manual" = "manual %@";
+"menu.workStart.auto" = "auto";
+"menu.detectStart" = "Detect start of work";
+"menu.workEnd" = "End of work: %@";
+"menu.workEnd.off" = "off";
+"menu.workdays" = "Work days…";
+"menu.showHistory" = "Show history file";
+"menu.refresh" = "Refresh";
+"menu.version" = "Version %@";
+"menu.update.check" = "Check for updates…";
+"menu.update.checking" = "Checking for updates…";
+"menu.update.install" = "Install update %@…";
+"menu.update.downloading" = "Downloading update…";
+"menu.quit" = "Quit";
+
+/* Workday end rule */
+"end.afterStart" = "%@ after start";
+
+/* Where today's start came from */
+"source.manual" = "manual";
+"source.vpn" = "VPN";
+"source.noVpn" = "no VPN";
+"source.activity" = "activity";
+"source.edited" = "edited";
+
+/* Update dialogs */
+"alert.upToDate" = "You have the latest version (%@).";
+"alert.checkFailed" = "Could not check for updates.";
+"alert.update.title" = "Version %@ is available";
+"alert.update.installed" = "Installed: %@.";
+"alert.update.restart" = "The app restarts after the installation.";
+"alert.installFailed" = "Could not install the update.";
+"alert.unverifiable.title" = "Version %@ is available but cannot be verified";
+"alert.unverifiable.body" = "The release lacks the app archive or its SHA-256 digest, so VPN Time will not install it by itself. Download it manually from the release page.";
+"button.install" = "Install";
+"button.later" = "Later";
+"button.openReleasePage" = "Open release page";
+"button.ok" = "OK";
+"button.save" = "Save";
+"button.close" = "Close";
+
+/* Update errors */
+"update.error.offline" = "No connection to GitHub: %@";
+"update.error.status" = "GitHub responded with code %ld.";
+"update.error.unreadable" = "Could not read GitHub's response.";
+"update.error.download" = "Download failed: %@";
+"update.error.downloadStatus" = "Download failed (code %ld).";
+"update.error.noFile" = "The download returned no file.";
+"update.error.checksum" = "The checksum of the downloaded file does not match.";
+"update.error.unpack" = "Could not unpack the update: %@";
+"update.error.noApp" = "The archive does not contain %@.";
+"update.error.notNewer" = "The downloaded version (%1$@) is not newer than %2$@.";
+"update.error.notWritable" = "No permission to write to %@.";
+"update.error.noHelper" = "This copy of the app lacks update-helper.sh — install the update manually.";
+"update.error.signature" = "Could not read the update's signature.";
+"update.error.requirement" = "Could not build the signature requirement.";
+"update.error.team" = "The update is not signed by team %1$@ (OSStatus %2$ld).";
+
+/* Work hours window */
+"form.title" = "Work hours";
+"form.startCaption" = "Start of work today";
+"form.start.auto" = "Automatic";
+"form.start.manual" = "Manual";
+"form.detected" = "detected %1$@ (%2$@)";
+"form.detected.none" = "nothing detected yet";
+"form.endCaption" = "End of work (quits Tunnelblick)";
+"form.end.off" = "Off";
+"form.end.at" = "At";
+"form.end.after" = "After";
+"form.end.afterSuffix" = "from the start of work";
+"form.preview.unknown" = "Today: start unknown";
+"form.preview.noEnd" = "Today: from %@, no end";
+"form.preview.endBeforeStart" = "Today: from %1$@, end %2$@ is before the start";
+"form.preview.range" = "Today: %1$@ → %2$@ (%3$@)";
+"form.hint" = "A manual start applies to today only. The end works while the VPN is up, once a day.";
+
+/* Work days window */
+"days.title" = "Work days";
+"days.totals" = "Today %1$@  ·  this week %2$@  ·  this month %3$@";
+"days.empty" = "No saved days — pick a date to add a day.";
+"days.endUnknown" = "End unknown — set it and save.";
+"days.newDay" = "New day — save to add it.";
+"days.endBeforeStart" = "The end must be later than the start.";
+"days.saved" = "Saved %@.";
+"days.removed" = "Removed %@.";
+"days.cannotRemoveToday" = "Today cannot be removed — set the start to “Automatic”.";
+"days.today" = "today";
+"days.day" = "Day";
+"days.from" = "from";
+"days.to" = "to";
+"days.saveDay" = "Save day";
+"days.removeDay" = "Remove day";
+"days.hint" = "Saving today sets today's manual start and end. The end-of-work rule still quits Tunnelblick.";
+"days.column.day" = "Day";
+"days.column.start" = "Start";
+"days.column.end" = "End";
+"days.column.length" = "Duration";
+"days.column.source" = "Source";
+
+/* Inactivity question */
+"idle.headline" = "Are you still working?";
+"idle.message" = "No keyboard or mouse activity since %1$@ (%2$@).";
+"idle.countdown" = "Without an answer, work time stops at %@.";
+"idle.working" = "I'm working";
+"idle.endWork" = "End work";

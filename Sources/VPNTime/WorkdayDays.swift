@@ -73,22 +73,25 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             loadDay(first)
         } else {
             dayPicker.dateValue = dayPicker.maxDate ?? Date()
-            dayStatus.stringValue = "Brak zapisanych dni — wybierz datę, żeby dodać dzień."
+            dayStatus.stringValue = L("days.empty")
         }
     }
 
     private func updateTotals() {
         let totals = WorkdayTotals(calendar: calendar, now: Date())
-        self.totals.stringValue = "Dziś " + hoursMinutes(totals.total(.today, records: rows))
-            + "  ·  ten tydzień " + hoursMinutes(totals.total(.week, records: rows))
-            + "  ·  ten miesiąc " + hoursMinutes(totals.total(.month, records: rows))
+        self.totals.stringValue = L(
+            "days.totals",
+            hoursMinutes(totals.total(.today, records: rows)),
+            hoursMinutes(totals.total(.week, records: rows)),
+            hoursMinutes(totals.total(.month, records: rows))
+        )
     }
 
     private func loadDay(_ record: WorkdayRecord) {
         dayPicker.dateValue = record.start
         startPicker.dateValue = record.start
         endPicker.dateValue = record.end ?? record.start.addingTimeInterval(8 * 3600)
-        dayStatus.stringValue = record.end == nil ? "Koniec nieznany — ustaw go i zapisz." : ""
+        dayStatus.stringValue = record.end == nil ? L("days.endUnknown") : ""
     }
 
     @objc private func dayChanged() {
@@ -99,7 +102,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             loadDay(rows[index])
         } else {
             table.deselectAll(nil)
-            dayStatus.stringValue = "Nowy dzień — zapisz, żeby go dodać."
+            dayStatus.stringValue = L("days.newDay")
         }
     }
 
@@ -112,7 +115,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         }
 
         guard endMinutes > startMinutes else {
-            dayStatus.stringValue = "Koniec musi być później niż początek."
+            dayStatus.stringValue = L("days.endBeforeStart")
             NSSound.beep()
             return
         }
@@ -134,14 +137,14 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             loadDay(rows[index])
         }
 
-        dayStatus.stringValue = "Zapisano \(key)."
+        dayStatus.stringValue = L("days.saved", key)
     }
 
     @objc private func removeDay() {
         let key = history.key(for: dayPicker.dateValue)
 
         if calendar.isDateInToday(dayPicker.dateValue) {
-            dayStatus.stringValue = "Dzisiejszego dnia nie da się usunąć — ustaw początek na „Automatycznie”."
+            dayStatus.stringValue = L("days.cannotRemoveToday")
             NSSound.beep()
             return
         }
@@ -153,7 +156,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
 
         history.remove(day: dayPicker.dateValue)
         reloadDays()
-        dayStatus.stringValue = "Usunięto \(key)."
+        dayStatus.stringValue = L("days.removed", key)
     }
 
     @objc private func close() {
@@ -172,7 +175,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
 
         switch tableColumn?.identifier.rawValue {
         case "day":
-            text = isToday ? "dziś" : record.day
+            text = isToday ? L("days.today") : record.day
         case "start":
             text = clock.string(from: record.start)
         case "end":
@@ -204,7 +207,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         let picker = NSDatePicker()
         picker.datePickerStyle = .textFieldAndStepper
         picker.datePickerElements = [.yearMonthDay]
-        picker.locale = Locale(identifier: "pl_PL")
+        picker.locale = Locale.current
         picker.calendar = calendar
         picker.timeZone = calendar.timeZone
         picker.setAccessibilityIdentifier("pastDayPicker")
@@ -219,30 +222,30 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         dayStatus.textColor = .secondaryLabelColor
         dayStatus.font = .systemFont(ofSize: 11)
 
-        let saveDay = NSButton(title: "Zapisz dzień", target: self, action: #selector(saveDay))
+        let saveDay = NSButton(title: L("days.saveDay"), target: self, action: #selector(saveDay))
         saveDay.keyEquivalent = "\r"
         saveDay.setAccessibilityIdentifier("pastDaySave")
-        let removeDay = NSButton(title: "Usuń dzień", target: self, action: #selector(removeDay))
+        let removeDay = NSButton(title: L("days.removeDay"), target: self, action: #selector(removeDay))
         removeDay.setAccessibilityIdentifier("pastDayRemove")
-        let close = NSButton(title: "Zamknij", target: self, action: #selector(close))
+        let close = NSButton(title: L("button.close"), target: self, action: #selector(close))
         close.keyEquivalent = "\u{1b}"
 
         let edit = NSStackView(views: [
-            NSTextField(labelWithString: "Dzień"), dayPicker,
-            NSTextField(labelWithString: "od"), startPicker,
-            NSTextField(labelWithString: "do"), endPicker,
+            NSTextField(labelWithString: L("days.day")), dayPicker,
+            NSTextField(labelWithString: L("days.from")), startPicker,
+            NSTextField(labelWithString: L("days.to")), endPicker,
         ])
         edit.orientation = .horizontal
         edit.spacing = 8
 
         let panel = TimePickerPanel.panel(
-            title: "Dni pracy",
+            title: L("days.title"),
             views: [
                 totals,
                 tableView(),
                 edit,
                 dayStatus,
-                TimePickerPanel.hint("Zapis dzisiejszego dnia ustawia ręczny początek i koniec na dziś. Tunnelblicka dalej zamyka reguła końca pracy."),
+                TimePickerPanel.hint(L("days.hint")),
                 TimePickerPanel.buttons([close, removeDay, saveDay]),
             ],
             delegate: self
@@ -256,11 +259,11 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
 
     private func tableView() -> NSView {
         let columns: [(String, String, CGFloat)] = [
-            ("day", "Dzień", 90),
-            ("start", "Początek", 65),
-            ("end", "Koniec", 65),
-            ("length", "Czas", 70),
-            ("source", "Źródło", 90),
+            ("day", L("days.column.day"), 90),
+            ("start", L("days.column.start"), 65),
+            ("end", L("days.column.end"), 65),
+            ("length", L("days.column.length"), 70),
+            ("source", L("days.column.source"), 90),
         ]
 
         for (id, title, width) in columns {

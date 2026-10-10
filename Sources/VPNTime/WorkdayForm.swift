@@ -16,13 +16,13 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
     private var save: ((WorkdaySettings) -> Void)?
     private var detected: WorkdayStart?
 
-    private let startAuto = NSButton(radioButtonWithTitle: "Automatycznie", target: nil, action: nil)
-    private let startManual = NSButton(radioButtonWithTitle: "Ręcznie", target: nil, action: nil)
+    private let startAuto = NSButton(radioButtonWithTitle: L("form.start.auto"), target: nil, action: nil)
+    private let startManual = NSButton(radioButtonWithTitle: L("form.start.manual"), target: nil, action: nil)
     private let detectedLabel = NSTextField(labelWithString: "")
-    private let detection = NSButton(checkboxWithTitle: "Wykrywaj początek pracy", target: nil, action: nil)
-    private let endOff = NSButton(radioButtonWithTitle: "Wyłączony", target: nil, action: nil)
-    private let endAt = NSButton(radioButtonWithTitle: "O godzinie", target: nil, action: nil)
-    private let endAfter = NSButton(radioButtonWithTitle: "Po", target: nil, action: nil)
+    private let detection = NSButton(checkboxWithTitle: L("menu.detectStart"), target: nil, action: nil)
+    private let endOff = NSButton(radioButtonWithTitle: L("form.end.off"), target: nil, action: nil)
+    private let endAt = NSButton(radioButtonWithTitle: L("form.end.at"), target: nil, action: nil)
+    private let endAfter = NSButton(radioButtonWithTitle: L("form.end.after"), target: nil, action: nil)
     private let preview = NSTextField(labelWithString: "")
     private lazy var startPicker = TimePickerPanel.picker(identifier: "workdayStartPicker", calendar: calendar)
     private lazy var endTimePicker = TimePickerPanel.picker(identifier: "workdayEndPicker", calendar: calendar)
@@ -74,8 +74,8 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
 
     private func load(_ settings: WorkdaySettings) {
         detectedLabel.stringValue = detected.map {
-            "wykryto \(clock.string(from: $0.date)) (\(Self.label(for: $0)))"
-        } ?? "nic jeszcze nie wykryto"
+            L("form.detected", clock.string(from: $0.date), Self.label(for: $0))
+        } ?? L("form.detected.none")
 
         startPicker.dateValue = settings.manualStart ?? detected?.date ?? Date()
         select(settings.manualStart == nil ? startAuto : startManual, among: [startAuto, startManual])
@@ -135,22 +135,22 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
         let start = settings.manualStart ?? (settings.detectionEnabled ? detected?.date : nil)
 
         guard let start else {
-            preview.stringValue = "Dziś: początek nieznany"
+            preview.stringValue = L("form.preview.unknown")
             return
         }
 
         guard let end = settings.endRule?.trigger(now: Date(), start: start, calendar: calendar) else {
-            preview.stringValue = "Dziś: od \(clock.string(from: start)), bez końca"
+            preview.stringValue = L("form.preview.noEnd", clock.string(from: start))
             return
         }
 
         guard end > start else {
-            preview.stringValue = "Dziś: od \(clock.string(from: start)), koniec \(clock.string(from: end)) jest przed początkiem"
+            preview.stringValue = L("form.preview.endBeforeStart", clock.string(from: start), clock.string(from: end))
             return
         }
 
         let length = Int(end.timeIntervalSince(start))
-        preview.stringValue = "Dziś: \(clock.string(from: start)) → \(clock.string(from: end)) (\(hoursMinutes(length)))"
+        preview.stringValue = L("form.preview.range", clock.string(from: start), clock.string(from: end), hoursMinutes(length))
     }
 
     @objc private func chooseStart(_ sender: NSButton) {
@@ -182,13 +182,13 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
     static func label(for start: WorkdayStart) -> String {
         switch start.source {
         case .manual:
-            return "ręcznie"
+            return L("source.manual")
         case .vpn:
-            return "VPN"
+            return L("source.vpn")
         case .activity:
-            return start.provisional ? "bez VPN" : "aktywność"
+            return start.provisional ? L("source.noVpn") : L("source.activity")
         case .edited:
-            return "poprawiony"
+            return L("source.edited")
         }
     }
 
@@ -203,25 +203,25 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
         preview.font = .systemFont(ofSize: 13, weight: .medium)
         preview.setAccessibilityIdentifier("workdayPreview")
 
-        let save = NSButton(title: "Zapisz", target: self, action: #selector(saveToday))
+        let save = NSButton(title: L("button.save"), target: self, action: #selector(saveToday))
         save.keyEquivalent = "\r"
         save.setAccessibilityIdentifier("workdaySave")
-        let close = NSButton(title: "Zamknij", target: self, action: #selector(close))
+        let close = NSButton(title: L("button.close"), target: self, action: #selector(close))
         close.keyEquivalent = "\u{1b}"
 
         panel = TimePickerPanel.panel(
-            title: "Czas pracy",
+            title: L("form.title"),
             views: [
-                TimePickerPanel.caption("Początek pracy dziś"),
+                TimePickerPanel.caption(L("form.startCaption")),
                 row(startAuto, detectedLabel),
                 row(startManual, startPicker),
                 detection,
-                TimePickerPanel.caption("Koniec pracy (zamyka Tunnelblicka)"),
+                TimePickerPanel.caption(L("form.endCaption")),
                 endOff,
                 row(endAt, endTimePicker),
-                row(endAfter, durationPicker, NSTextField(labelWithString: "od początku pracy")),
+                row(endAfter, durationPicker, NSTextField(labelWithString: L("form.end.afterSuffix"))),
                 preview,
-                TimePickerPanel.hint("Ręczny początek obowiązuje tylko dziś. Koniec działa przy aktywnym VPN-ie, raz dziennie."),
+                TimePickerPanel.hint(L("form.hint")),
                 TimePickerPanel.buttons([close, save]),
             ],
             delegate: self
