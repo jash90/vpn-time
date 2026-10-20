@@ -141,7 +141,9 @@ extended by an activity run that continues after the disconnect (breaks up to
 `activity`, `idle`, `manual`, `planned`, `edited`). The planned end (from the
 end-of-work rule) is only a guess; once the day is over, the detected end replaces
 it. Missing past days are filled in at launch, once a day while the app is
-running, and after toggling detection — provided **Detect start of work** is on.
+running, and after toggling start detection — provided **Detect start of work**
+is on. While a VPN session from an earlier day is still running, filling in waits
+until it closes.
 Days without a VPN connection do not go into the history.
 `vpn-report.sh` (day view) appends them to the row:
 `2026-10-02     7h 40m   start 08:12  end 16:30`. The report prints English, or
@@ -173,7 +175,8 @@ activity from 12:10 to 14:40 (2h 30m)."
 The settings are in the **"Work hours"** window, in the "End-of-work detection"
 section, with a minimum of 1 minute for each time. The **"Detect end of work"**
 (Polish: "Wykrywaj koniec pracy") toggle is also in the menu, below the "End of
-work" item. A switched-off toggle disables the question. In `defaults` these
+work" item. A switched-off toggle disables the question only; ends of past days
+are detected either way. In `defaults` these
 values are stored in seconds under the keys `idleThresholdSeconds`,
 `idleRepeatSeconds` and `idleGraceSeconds`.
 

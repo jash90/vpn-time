@@ -134,7 +134,9 @@ końca widać w kolumnie **Koniec z**: `VPN`, `aktywność`, `bezczynność`,
 `planned`, `edited`). Planowany koniec (z reguły końca) jest tylko
 zgadywaniem — gdy dzień minie, zastępuje go wykryty. Uzupełnianie brakujących
 minionych dni dzieje się przy starcie apki, raz na dobę, gdy apka działa, i po
-przełączeniu wykrywania — o ile włączone jest **Wykrywaj początek pracy**.
+przełączeniu wykrywania początku — o ile włączone jest **Wykrywaj początek
+pracy**. Póki trwa sesja VPN z wcześniejszego dnia, uzupełnianie czeka na jej
+zamknięcie.
 Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
 do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
 
@@ -160,7 +162,8 @@ klawiatury ani myszy (2h 30m).”.
 
 Ustawienia są w oknie **Czas pracy**, w sekcji „Wykrywanie końca pracy”: minimum
 1 minuta przy każdym czasie. Przełącznik **Wykrywaj koniec pracy** jest też w
-menu, pod pozycją „Koniec pracy”. Wyłączony przełącznik wyłącza pytanie. W
+menu, pod pozycją „Koniec pracy”. Wyłączony przełącznik wyłącza tylko pytanie;
+końce minionych dni są wykrywane tak czy inaczej. W
 `defaults` te wartości leżą jako sekundy w kluczach `idleThresholdSeconds`,
 `idleRepeatSeconds` i `idleGraceSeconds`.
 

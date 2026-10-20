@@ -185,7 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history.backfill(
             detector: detector,
             endDetector: WorkdayEndDetector(calendar: calendar),
-            useActivityForEnd: endDetectionEnabled,
+            // The end-detection toggle only governs the question; past ends
+            // always take the activity after the disconnect into account.
+            useActivityForEnd: true,
             streaks: store.activityStreaks(),
             sessions: store.sessions(),
             today: Date()
@@ -198,6 +200,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let today = calendar.startOfDay(for: Date())
 
         guard lastBackfillDay != today else {
+            return
+        }
+
+        // A session still running from an earlier day is missing from the
+        // closed sessions, so that day's end would be settled too early.
+        // Retry on a later refresh, once it has been closed.
+        if let active = store.activeSession(), active.0 < today {
             return
         }
 
@@ -280,7 +289,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleEndDetection() {
         UserDefaults.standard.set(!endDetectionEnabled, forKey: workdayEndDetectionKey)
-        lastBackfillDay = nil
         refresh()
     }
 
@@ -425,8 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || settings.idleThreshold != idleWatch.threshold
             || settings.idleRepeat != idleWatch.repeatInterval
             || settings.idleGrace != idleWatch.grace
-        let togglesChanged = settings.detectionEnabled != detectionEnabled
-            || settings.endDetectionEnabled != endDetectionEnabled
+        let startDetectionChanged = settings.detectionEnabled != detectionEnabled
 
         if let start = settings.manualStart {
             defaults.set(start, forKey: workdayStartManualKey)
@@ -447,7 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Past rows are filled with the detection that is on now.
-        if togglesChanged {
+        if startDetectionChanged {
             lastBackfillDay = nil
         }
 
