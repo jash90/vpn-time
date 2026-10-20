@@ -1,9 +1,10 @@
 import AppKit
 import VPNTimeCore
 
-// The "Is this the end of work?" window shown after an hour without keyboard
-// or mouse input while a workday is running. It floats above other windows on
-// every Space but does not take keyboard focus, so it only answers to a click.
+// The "Is this the end of work?" window shown after the set time without
+// keyboard or mouse input while a workday is running. It floats above other
+// windows on every Space but does not take keyboard focus, so it only answers
+// to a click.
 final class IdlePrompt: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var timer: Timer?

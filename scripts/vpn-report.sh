@@ -44,7 +44,8 @@ bucket_of() {
 }
 
 # "start HH:MM" plus "end HH:MM" (localized) when known, from the app's
-# ~/.vpn-workdays.csv. Old rows have no end column (date,start_iso,source).
+# ~/.vpn-workdays.csv. Old rows have no end column (date,start_iso,source);
+# newer ones add end_source after source.
 workday_of() {
   [ -f "$WORKDAYS" ] || return 0
   awk -F, -v day="$1" -v end_label="$T_END" '

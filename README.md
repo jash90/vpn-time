@@ -158,7 +158,7 @@ other windows on every desktop but does not take focus, so you answer with a
 click:
 
 - **"I'm working"** (Polish: "Pracuję") — nothing changes, that idleness counts as
-  work. The next question comes after **Ask again every …** (default 1 h), counted
+  work. The next question comes after **Ask again every …** (by default the same as "End after"), counted
   from the answer.
 - **"End work"** (Polish: "Zakończ pracę") or **no click within Time to answer**
   (default 5 min) — the workday ends at the moment the idleness began (no earlier

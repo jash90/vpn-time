@@ -147,7 +147,7 @@ bez VPN-u, bo pytanie dotyczy dnia pracy, nie połączenia. Okno jest nad innymi
 oknami na każdym biurku, ale nie zabiera fokusu, więc odpowiada się kliknięciem:
 
 - **Pracuję** — nic się nie zmienia, ta bezczynność liczy się do pracy. Kolejne
-  pytanie za tyle, ile **Pytaj ponownie co …** (domyślnie 1 h), liczone od odpowiedzi.
+  pytanie za tyle, ile **Pytaj ponownie co …** (domyślnie tyle samo co „Koniec po”), liczone od odpowiedzi.
 - **Zakończ pracę** albo brak kliknięcia przez **Czas na odpowiedź** (domyślnie
   5 min) — dzień pracy kończy się w chwili, gdy zaczęła się bezczynność
   (najwcześniej na początku pracy). Licznik w menu staje, koniec trafia do
