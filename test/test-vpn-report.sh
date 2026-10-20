@@ -44,6 +44,14 @@ CSV
 out="$(bash "$ROOT/scripts/vpn-report.sh" day)"
 assert_contains "$out" "2026-07-08     8h 57m   start 07:20  koniec 16:30" "start and end shown for a recorded day"
 
+echo "vpn-report.sh day with a five-column workdays file"
+cat > "$HOME/.vpn-workdays.csv" <<'CSV'
+date,start_iso,end_iso,source,end_source
+2026-07-08,2026-07-08 07:20:05,2026-07-08 16:30:00,activity,idle
+CSV
+out="$(bash "$ROOT/scripts/vpn-report.sh" day)"
+assert_contains "$out" "2026-07-08     8h 57m   start 07:20  koniec 16:30" "start and end shown with an end source"
+
 echo "vpn-report.sh day with an old three-column workdays file"
 cat > "$HOME/.vpn-workdays.csv" <<'CSV'
 date,start_iso,source

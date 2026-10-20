@@ -19,6 +19,7 @@
 "menu.workStart.manual" = "manual %@";
 "menu.workStart.auto" = "auto";
 "menu.detectStart" = "Detect start of work";
+"menu.detectEnd" = "Detect end of work";
 "menu.workEnd" = "End of work: %@";
 "menu.workEnd.off" = "off";
 "menu.workdays" = "Work days…";
@@ -40,6 +41,10 @@
 "source.noVpn" = "no VPN";
 "source.activity" = "activity";
 "source.edited" = "edited";
+
+/* Where today's end came from (VPN, activity, manual and edited reuse the start labels) */
+"endSource.idle" = "inactivity";
+"endSource.planned" = "plan";
 
 /* Update dialogs */
 "alert.upToDate" = "You have the latest version (%@).";
@@ -86,11 +91,16 @@
 "form.end.at" = "At";
 "form.end.after" = "After";
 "form.end.afterSuffix" = "from the start of work";
+"form.endDetectionCaption" = "End-of-work detection";
+"form.idle.threshold" = "End after";
+"form.idle.thresholdSuffix" = "without activity";
+"form.idle.repeat" = "Ask again every";
+"form.idle.grace" = "Time to answer";
 "form.preview.unknown" = "Today: start unknown";
 "form.preview.noEnd" = "Today: from %@, no end";
 "form.preview.endBeforeStart" = "Today: from %1$@, end %2$@ is before the start";
 "form.preview.range" = "Today: %1$@ → %2$@ (%3$@)";
-"form.hint" = "A manual start applies to today only. The end works while the VPN is up, once a day.";
+"form.hint" = "A manual start applies to today only. Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began.";
 
 /* Work days window */
 "days.title" = "Work days";
@@ -114,10 +124,12 @@
 "days.column.end" = "End";
 "days.column.length" = "Duration";
 "days.column.source" = "Source";
+"days.column.endSource" = "End from";
 
 /* Inactivity question */
-"idle.headline" = "Are you still working?";
+"idle.headline" = "Is this the end of work?";
 "idle.message" = "No keyboard or mouse activity since %1$@ (%2$@).";
+"idle.messageRange" = "No keyboard or mouse activity from %1$@ to %2$@ (%3$@).";
 "idle.countdown" = "Without an answer, work time stops at %@.";
 "idle.working" = "I'm working";
 "idle.endWork" = "End work";

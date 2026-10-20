@@ -6,6 +6,10 @@ struct WorkdaySettings {
     var manualStart: Date?
     var detectionEnabled: Bool
     var endRule: WorkdayEndRule?
+    var endDetectionEnabled: Bool
+    var idleThreshold: TimeInterval
+    var idleRepeat: TimeInterval
+    var idleGrace: TimeInterval
 }
 
 // The "Czas pracy" window: today's start and end settings with a live preview.
@@ -20,6 +24,7 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
     private let startManual = NSButton(radioButtonWithTitle: L("form.start.manual"), target: nil, action: nil)
     private let detectedLabel = NSTextField(labelWithString: "")
     private let detection = NSButton(checkboxWithTitle: L("menu.detectStart"), target: nil, action: nil)
+    private let endDetection = NSButton(checkboxWithTitle: L("menu.detectEnd"), target: nil, action: nil)
     private let endOff = NSButton(radioButtonWithTitle: L("form.end.off"), target: nil, action: nil)
     private let endAt = NSButton(radioButtonWithTitle: L("form.end.at"), target: nil, action: nil)
     private let endAfter = NSButton(radioButtonWithTitle: L("form.end.after"), target: nil, action: nil)
@@ -27,6 +32,9 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
     private lazy var startPicker = TimePickerPanel.picker(identifier: "workdayStartPicker", calendar: calendar)
     private lazy var endTimePicker = TimePickerPanel.picker(identifier: "workdayEndPicker", calendar: calendar)
     private lazy var durationPicker = TimePickerPanel.picker(identifier: "workdayEndDurationPicker", calendar: calendar)
+    private lazy var idleThresholdPicker = TimePickerPanel.picker(identifier: "idleThresholdPicker", calendar: calendar)
+    private lazy var idleRepeatPicker = TimePickerPanel.picker(identifier: "idleRepeatPicker", calendar: calendar)
+    private lazy var idleGracePicker = TimePickerPanel.picker(identifier: "idleGracePicker", calendar: calendar)
 
     private lazy var clock: DateFormatter = {
         let formatter = DateFormatter()
@@ -80,6 +88,10 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
         startPicker.dateValue = settings.manualStart ?? detected?.date ?? Date()
         select(settings.manualStart == nil ? startAuto : startManual, among: [startAuto, startManual])
         detection.state = settings.detectionEnabled ? .on : .off
+        endDetection.state = settings.endDetectionEnabled ? .on : .off
+        idleThresholdPicker.dateValue = durationDate(settings.idleThreshold)
+        idleRepeatPicker.dateValue = durationDate(settings.idleRepeat)
+        idleGracePicker.dateValue = durationDate(settings.idleGrace)
 
         var time = WorkdayEnd(hour: 17, minute: 0).minutesOfDay
         var duration = 8 * 60
@@ -123,13 +135,39 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
             rule = .afterStart(minutes: minutes)
         }
 
-        return WorkdaySettings(manualStart: manual, detectionEnabled: detection.state == .on, endRule: rule)
+        return WorkdaySettings(
+            manualStart: manual,
+            detectionEnabled: detection.state == .on,
+            endRule: rule,
+            endDetectionEnabled: endDetection.state == .on,
+            idleThreshold: duration(of: idleThresholdPicker),
+            idleRepeat: duration(of: idleRepeatPicker),
+            idleGrace: duration(of: idleGracePicker)
+        )
+    }
+
+    // The duration pickers show hh:mm, so a setting lands on whole minutes.
+    // An hh:mm picker holds 00:01–23:59; values outside (a few seconds set
+    // for testing, say) are shown at the nearest end.
+    private func durationDate(_ seconds: TimeInterval) -> Date {
+        TimePickerPanel.date(minutes: min(max(1, Int(seconds / 60)), 1439), calendar: calendar)
+    }
+
+    // A picker left at 00:00 still means one minute: without a floor the
+    // question could never fire.
+    private func duration(of picker: NSDatePicker) -> TimeInterval {
+        let minutes = TimePickerPanel.minutes(of: picker, calendar: calendar) ?? 0
+        return TimeInterval(max(1, minutes) * 60)
     }
 
     @objc private func changed() {
         startPicker.isEnabled = startManual.state == .on
         endTimePicker.isEnabled = endAt.state == .on
         durationPicker.isEnabled = endAfter.state == .on
+        let detecting = endDetection.state == .on
+        idleThresholdPicker.isEnabled = detecting
+        idleRepeatPicker.isEnabled = detecting
+        idleGracePicker.isEnabled = detecting
 
         let settings = current
         let start = settings.manualStart ?? (settings.detectionEnabled ? detected?.date : nil)
@@ -192,14 +230,37 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
         }
     }
 
+    static func label(for end: WorkdayEndSource?) -> String {
+        switch end {
+        case .vpn:
+            return L("source.vpn")
+        case .activity:
+            return L("source.activity")
+        case .idle:
+            return L("endSource.idle")
+        case .manual:
+            return L("source.manual")
+        case .planned:
+            return L("endSource.planned")
+        case .edited:
+            return L("source.edited")
+        case nil:
+            return "—"
+        }
+    }
+
     private func build() {
         [startAuto, startManual].forEach { $0.target = self; $0.action = #selector(chooseStart(_:)) }
         endRadios.forEach { $0.target = self; $0.action = #selector(chooseEnd(_:)) }
         detection.target = self
         detection.action = #selector(changed)
-        [startPicker, endTimePicker, durationPicker].forEach { $0.target = self; $0.action = #selector(changed) }
+        endDetection.target = self
+        endDetection.action = #selector(changed)
+        [startPicker, endTimePicker, durationPicker, idleThresholdPicker, idleRepeatPicker, idleGracePicker]
+            .forEach { $0.target = self; $0.action = #selector(changed) }
 
         detectedLabel.textColor = .secondaryLabelColor
+        endDetection.setAccessibilityIdentifier("endDetection")
         preview.font = .systemFont(ofSize: 13, weight: .medium)
         preview.setAccessibilityIdentifier("workdayPreview")
 
@@ -220,6 +281,15 @@ final class WorkdayForm: NSObject, NSWindowDelegate {
                 endOff,
                 row(endAt, endTimePicker),
                 row(endAfter, durationPicker, NSTextField(labelWithString: L("form.end.afterSuffix"))),
+                TimePickerPanel.caption(L("form.endDetectionCaption")),
+                endDetection,
+                row(
+                    NSTextField(labelWithString: L("form.idle.threshold")),
+                    idleThresholdPicker,
+                    NSTextField(labelWithString: L("form.idle.thresholdSuffix"))
+                ),
+                row(NSTextField(labelWithString: L("form.idle.repeat")), idleRepeatPicker),
+                row(NSTextField(labelWithString: L("form.idle.grace")), idleGracePicker),
                 preview,
                 TimePickerPanel.hint(L("form.hint")),
                 TimePickerPanel.buttons([close, save]),

@@ -35,13 +35,13 @@ final class WorkdayHistoryTests: XCTestCase {
         history.record(WorkdayStart(date: date("2026-10-02 08:40:00"), source: .activity), end: nil, day: day)
         history.record(
             WorkdayStart(date: date("2026-10-02 08:00:00"), source: .manual),
-            end: date("2026-10-02 16:00:00"),
+            end: WorkdayEndPoint(date: date("2026-10-02 16:00:00"), source: .planned),
             day: day
         )
 
         XCTAssertEqual(
             contents(),
-            "date,start_iso,end_iso,source\n2026-10-02,2026-10-02 08:00:00,2026-10-02 16:00:00,manual\n"
+            "date,start_iso,end_iso,source,end_source\n2026-10-02,2026-10-02 08:00:00,2026-10-02 16:00:00,manual,planned\n"
         )
     }
 
@@ -52,7 +52,21 @@ final class WorkdayHistoryTests: XCTestCase {
         history.record(WorkdayStart(date: date("2026-10-02 08:40:00"), source: .vpn), end: nil, day: day)
         history.record(nil, end: nil, day: day)
 
-        XCTAssertEqual(contents(), "date,start_iso,end_iso,source\n")
+        XCTAssertEqual(contents(), "date,start_iso,end_iso,source,end_source\n")
+    }
+
+    func testRecordKeepsTheEndSource() {
+        let history = WorkdayHistory(path: path)
+
+        history.record(
+            WorkdayStart(date: date("2026-10-02 08:00:00"), source: .vpn),
+            end: WorkdayEndPoint(date: date("2026-10-02 15:30:00"), source: .idle),
+            day: date("2026-10-02 12:00:00")
+        )
+
+        let record = history.entries()["2026-10-02"]
+        XCTAssertEqual(record?.end, date("2026-10-02 15:30:00"))
+        XCTAssertEqual(record?.endSource, .idle)
     }
 
     func testReadsRowsWithoutTheEndColumn() throws {
@@ -61,6 +75,20 @@ final class WorkdayHistoryTests: XCTestCase {
 
         XCTAssertEqual(WorkdayHistory(path: path).records(), [
             WorkdayRecord(day: "2026-09-15", start: date("2026-09-15 12:00:48"), end: nil, source: .vpn),
+        ])
+    }
+
+    func testReadsRowsWithoutTheEndSourceColumn() throws {
+        try "date,start_iso,end_iso,source\n2026-09-15,2026-09-15 12:00:48,2026-09-15 16:00:00,vpn\n"
+            .write(toFile: path, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(WorkdayHistory(path: path).records(), [
+            WorkdayRecord(
+                day: "2026-09-15",
+                start: date("2026-09-15 12:00:48"),
+                end: date("2026-09-15 16:00:00"),
+                source: .vpn
+            ),
         ])
     }
 
@@ -74,6 +102,7 @@ final class WorkdayHistoryTests: XCTestCase {
 
         let record = history.entries()["2026-09-30"]
         XCTAssertEqual(record?.source, .edited)
+        XCTAssertEqual(record?.endSource, .edited)
         XCTAssertEqual(record?.duration, 30_600)
 
         history.remove(day: date("2026-09-30 12:00:00"))
@@ -96,6 +125,8 @@ final class WorkdayHistoryTests: XCTestCase {
 
         history.backfill(
             detector: WorkdayStartDetector(),
+            endDetector: WorkdayEndDetector(),
+            useActivityForEnd: true,
             streaks: [
                 ActivityStreak(start: date("2026-09-29 10:00:00"), end: date("2026-09-29 11:00:00")),
                 ActivityStreak(start: date("2026-10-01 08:30:00"), end: date("2026-10-01 16:00:00")),
@@ -111,10 +142,107 @@ final class WorkdayHistoryTests: XCTestCase {
         )
 
         XCTAssertEqual(contents(), """
-        date,start_iso,end_iso,source
-        2026-09-28,2026-09-28 09:00:00,2026-09-28 10:00:00,vpn
-        2026-09-30,2026-09-30 07:00:00,,edited
-        2026-10-01,2026-10-01 08:30:00,2026-10-01 16:00:00,activity
+        date,start_iso,end_iso,source,end_source
+        2026-09-28,2026-09-28 09:00:00,2026-09-28 10:00:00,vpn,vpn
+        2026-09-30,2026-09-30 07:00:00,,edited,
+        2026-10-01,2026-10-01 08:30:00,2026-10-01 16:00:00,activity,vpn
+
+        """)
+    }
+
+    func testBackfillReplacesAPlannedEndWithWhatHappened() {
+        let history = WorkdayHistory(path: path)
+        // Yesterday's row as recorded during the day: the rule's planned end.
+        history.record(
+            WorkdayStart(date: date("2026-10-01 08:30:00"), source: .activity),
+            end: WorkdayEndPoint(date: date("2026-10-01 16:30:00"), source: .planned),
+            day: date("2026-10-01 12:00:00")
+        )
+
+        history.backfill(
+            detector: WorkdayStartDetector(),
+            endDetector: WorkdayEndDetector(),
+            useActivityForEnd: true,
+            streaks: [ActivityStreak(start: date("2026-10-01 08:30:00"), end: date("2026-10-01 17:00:00"))],
+            sessions: [session("2026-10-01 09:00:00", 3600)],
+            today: date("2026-10-02 12:00:00")
+        )
+
+        XCTAssertEqual(contents(), """
+        date,start_iso,end_iso,source,end_source
+        2026-10-01,2026-10-01 08:30:00,2026-10-01 17:00:00,activity,activity
+
+        """)
+    }
+
+    func testBackfillKeepsAPlannedEndWhenThereWasNoVPN() {
+        let history = WorkdayHistory(path: path)
+        history.record(
+            WorkdayStart(date: date("2026-10-01 08:00:00"), source: .manual),
+            end: WorkdayEndPoint(date: date("2026-10-01 16:00:00"), source: .planned),
+            day: date("2026-10-01 12:00:00")
+        )
+
+        history.backfill(
+            detector: WorkdayStartDetector(),
+            endDetector: WorkdayEndDetector(),
+            useActivityForEnd: true,
+            streaks: [ActivityStreak(start: date("2026-10-01 08:00:00"), end: date("2026-10-01 12:00:00"))],
+            sessions: [],
+            today: date("2026-10-02 12:00:00")
+        )
+
+        XCTAssertEqual(
+            history.entries()["2026-10-01"],
+            WorkdayRecord(
+                day: "2026-10-01",
+                start: date("2026-10-01 08:00:00"),
+                end: date("2026-10-01 16:00:00"),
+                source: .manual,
+                endSource: .planned
+            )
+        )
+    }
+
+    func testBackfillKeepsEndsThatAreAlreadyFinal() throws {
+        try """
+        date,start_iso,end_iso,source,end_source
+        2026-09-28,2026-09-28 08:00:00,2026-09-28 09:30:00,vpn,vpn
+        2026-09-29,2026-09-29 08:00:00,2026-09-29 17:00:00,activity,activity
+        2026-09-30,2026-09-30 08:00:00,2026-09-30 15:00:00,manual,idle
+        2026-10-01,2026-10-01 08:00:00,2026-10-01 16:00:00,vpn,manual
+        2026-10-02,2026-10-02 08:00:00,2026-10-02 16:00:00,activity,edited
+        2026-10-03,2026-10-03 08:00:00,2026-10-03 16:00:00,activity,
+        2026-10-04,2026-10-04 08:00:00,2026-10-04 16:30:00,activity,planned
+        """.write(toFile: path, atomically: true, encoding: .utf8)
+
+        var streaks: [ActivityStreak] = []
+        var sessions: [Session] = []
+
+        for day in ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"] {
+            streaks.append(ActivityStreak(start: date("\(day) 08:00:00"), end: date("\(day) 18:30:00")))
+            sessions.append(session("\(day) 08:00:00", 36_000))
+        }
+
+        WorkdayHistory(path: path).backfill(
+            detector: WorkdayStartDetector(),
+            endDetector: WorkdayEndDetector(),
+            useActivityForEnd: true,
+            streaks: streaks,
+            sessions: sessions,
+            today: date("2026-10-05 12:00:00")
+        )
+
+        // Only the planned guess is replaced; every other end stays as it was.
+        XCTAssertEqual(contents(), """
+        date,start_iso,end_iso,source,end_source
+        2026-09-28,2026-09-28 08:00:00,2026-09-28 09:30:00,vpn,vpn
+        2026-09-29,2026-09-29 08:00:00,2026-09-29 17:00:00,activity,activity
+        2026-09-30,2026-09-30 08:00:00,2026-09-30 15:00:00,manual,idle
+        2026-10-01,2026-10-01 08:00:00,2026-10-01 16:00:00,vpn,manual
+        2026-10-02,2026-10-02 08:00:00,2026-10-02 16:00:00,activity,edited
+        2026-10-03,2026-10-03 08:00:00,2026-10-03 16:00:00,activity,
+        2026-10-04,2026-10-04 08:00:00,2026-10-04 18:30:00,activity,activity
 
         """)
     }

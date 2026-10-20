@@ -19,6 +19,7 @@
 "menu.workStart.manual" = "ręcznie %@";
 "menu.workStart.auto" = "auto";
 "menu.detectStart" = "Wykrywaj początek pracy";
+"menu.detectEnd" = "Wykrywaj koniec pracy";
 "menu.workEnd" = "Koniec pracy: %@";
 "menu.workEnd.off" = "wyłączony";
 "menu.workdays" = "Dni pracy…";
@@ -40,6 +41,10 @@
 "source.noVpn" = "bez VPN";
 "source.activity" = "aktywność";
 "source.edited" = "poprawiony";
+
+/* Skąd jest dzisiejszy koniec (VPN, aktywność, ręcznie i poprawiony jak przy początku) */
+"endSource.idle" = "bezczynność";
+"endSource.planned" = "plan";
 
 /* Update dialogs */
 "alert.upToDate" = "Masz najnowszą wersję (%@).";
@@ -86,11 +91,16 @@
 "form.end.at" = "O godzinie";
 "form.end.after" = "Po";
 "form.end.afterSuffix" = "od początku pracy";
+"form.endDetectionCaption" = "Wykrywanie końca pracy";
+"form.idle.threshold" = "Koniec po";
+"form.idle.thresholdSuffix" = "bez aktywności";
+"form.idle.repeat" = "Pytaj ponownie co";
+"form.idle.grace" = "Czas na odpowiedź";
 "form.preview.unknown" = "Dziś: początek nieznany";
 "form.preview.noEnd" = "Dziś: od %@, bez końca";
 "form.preview.endBeforeStart" = "Dziś: od %1$@, koniec %2$@ jest przed początkiem";
 "form.preview.range" = "Dziś: %1$@ → %2$@ (%3$@)";
-"form.hint" = "Ręczny początek obowiązuje tylko dziś. Koniec działa przy aktywnym VPN-ie, raz dziennie.";
+"form.hint" = "Ręczny początek obowiązuje tylko dziś. Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność.";
 
 /* Work days window */
 "days.title" = "Dni pracy";
@@ -114,10 +124,12 @@
 "days.column.end" = "Koniec";
 "days.column.length" = "Czas";
 "days.column.source" = "Źródło";
+"days.column.endSource" = "Koniec z";
 
 /* Inactivity question */
-"idle.headline" = "Czy nadal pracujesz?";
+"idle.headline" = "Czy to już koniec pracy?";
 "idle.message" = "Od %1$@ nie było aktywności klawiatury ani myszy (%2$@).";
+"idle.messageRange" = "Od %1$@ do %2$@ nie było aktywności klawiatury ani myszy (%3$@).";
 "idle.countdown" = "Bez odpowiedzi czas pracy zatrzyma się na %@.";
 "idle.working" = "Pracuję";
 "idle.endWork" = "Zakończ pracę";

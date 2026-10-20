@@ -1,9 +1,10 @@
 import AppKit
 import VPNTimeCore
 
-// The "Czy nadal pracujesz?" window shown after an hour without keyboard or
-// mouse input during a VPN session. It floats above other windows on every
-// Space but does not take keyboard focus, so it only answers to a click.
+// The "Is this the end of work?" window shown after the set time without
+// keyboard or mouse input while a workday is running. It floats above other
+// windows on every Space but does not take keyboard focus, so it only answers
+// to a click.
 final class IdlePrompt: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var timer: Timer?
@@ -35,6 +36,7 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
 
     func show(
         idleSince: Date,
+        until: Date?,
         stopAt: Date,
         deadline: Date,
         keepWorking: @escaping () -> Void,
@@ -49,8 +51,20 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
             build()
         }
 
-        let idle = Int(Date().timeIntervalSince(idleSince))
-        message.stringValue = L("idle.message", clock.string(from: idleSince), hoursMinutes(idle))
+        // A break that already ended (the Mac was asleep, say) is named as a
+        // window; an ongoing one counts up from when it began.
+        if let until {
+            let length = Int(until.timeIntervalSince(idleSince))
+            message.stringValue = L(
+                "idle.messageRange",
+                clock.string(from: idleSince),
+                clock.string(from: until),
+                hoursMinutes(length)
+            )
+        } else {
+            let idle = Int(Date().timeIntervalSince(idleSince))
+            message.stringValue = L("idle.message", clock.string(from: idleSince), hoursMinutes(idle))
+        }
         countdown.stringValue = L("idle.countdown", clock.string(from: stopAt))
         tick()
 

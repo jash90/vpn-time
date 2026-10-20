@@ -44,6 +44,12 @@ enum TimePickerPanel {
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
 
+        // A leading-aligned stack does not hold its views off the right inset,
+        // so the window came out 20 pt short and clipped the widest view.
+        for view in views {
+            view.trailingAnchor.constraint(lessThanOrEqualTo: stack.trailingAnchor, constant: -20).isActive = true
+        }
+
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 130),
             styleMask: [.titled, .closable],

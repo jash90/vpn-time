@@ -25,7 +25,7 @@ Two independent parts:
   computer (`~/.vpn-activity.*`). It works regardless of whether the app is
   running.
 - **View** (`VPN Time.app`) — reads those files every 15 s. It only writes the
-  autostart plist and the history of workday starts (`~/.vpn-workdays.csv`)
+  autostart plist and the history of workdays (`~/.vpn-workdays.csv`)
   itself. Quitting the app does not stop data collection.
 
 The core logic (`VPNTimeCore`) is separated from AppKit so it can be unit
@@ -42,7 +42,7 @@ tested; `AppDelegate` is thin and verified end-to-end.
 | App agent | `~/Library/LaunchAgents/com.redge.vpntimebar.plist` |
 | Data | `~/.vpn-sessions.csv`, `~/.vpn-sessions.state` |
 | Activity | `~/.vpn-activity.csv` (closed runs), `~/.vpn-activity.state` (current) |
-| Workdays | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source`) |
+| Workdays | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source,end_source`) |
 
 ## Installation
 
@@ -100,6 +100,9 @@ The **"Start of work"** (Polish: "Początek pracy") and **"End of work"**
   detected again;
 - the detection toggle;
 - end: `Off`, `At` or `After … from the start of work`;
+- end-of-work detection: the **Detect end of work** toggle and three times:
+  **End after … without activity** (default 1 h), **Ask again every …** (default
+  the same as "End after") and **Time to answer** (default 5 min);
 - a live preview, e.g. `Today: 08:00 → 16:00 (8h 00m)`.
 
 `Save` applies everything at once. If the end according to the new settings has
@@ -119,8 +122,8 @@ is a regular window: it stays on screen when you switch to another app.
 Clicking a row loads the day for editing. Set the date, the `from` and `to`
 times, then **"Save day"** (Polish: "Zapisz dzień"); picking a date that is not
 in the table adds a new day. **"Remove day"** (Polish: "Usuń dzień") deletes the
-row. Corrected past days get the source `edited` and the app no longer
-overwrites them.
+row. Corrected past days get the source `edited` (start or end) and the app
+no longer overwrites them.
 
 Today's row is built from the settings: the start as shown in the menu, the end
 according to the end-of-work rule (e.g. start + 11 h). Saving today's row in the
@@ -129,39 +132,62 @@ counter in the menu stops: `Work 08:00–15:30 (manual) · 7h 30m`. Whether
 Tunnelblick gets closed is still decided by the rule. Today's row cannot be
 removed — use `Automatic` for that.
 
-The history has the columns `date,start_iso,end_iso,source`; older files without
-the end column are still read. On launch the app fills in missing past days:
-the start according to the detection rule, the end as the end of that day's last
-VPN session. Days without a VPN connection do not go into the history.
+The history has the columns `date,start_iso,end_iso,source,end_source`; older files
+(without the end column or without the end source) are still read. A day's end is
+detected the same way as its start: the end of that day's last VPN session,
+extended by an activity run that continues after the disconnect (breaks up to
+30 min). The source of the end is shown in the **End from** column: `VPN`,
+`activity`, `inactivity`, `manual`, `plan` or `edited` (in the CSV: `vpn`,
+`activity`, `idle`, `manual`, `planned`, `edited`). The planned end (from the
+end-of-work rule) is only a guess; once the day is over, the detected end replaces
+it. Missing past days are filled in at launch, once a day while the app is
+running, and after toggling start detection — provided **Detect start of work**
+is on. While a VPN session from an earlier day is still running, filling in waits
+until it closes.
+Days without a VPN connection do not go into the history.
 `vpn-report.sh` (day view) appends them to the row:
 `2026-10-02     7h 40m   start 08:12  end 16:30`. The report prints English, or
 Polish when `VPN_REPORT_LANG`, `LC_ALL`, `LC_MESSAGES` or `LANG` starts with `pl`.
 
-## Idleness
+## End of work — detection
 
-During a VPN session, within the workday, the app reads the time since the last
-keyboard or mouse use every 5 s. After **1 h** without activity it shows an
-**"Are you still working?"** (Polish: "Czy nadal pracujesz?") window with a
-countdown. The window floats above other windows on every desktop but does not
-take focus, so you answer with a click:
+During the workday the app reads the time since the last keyboard or mouse use
+every 5 s. When the idleness lasts as long as **End after … without activity**
+(default 1 h), it shows a window **"Is this the end of work?"** (Polish: "Czy to
+już koniec pracy?") with a countdown. This also works without the VPN, because
+the question concerns the workday, not the connection. The window floats above
+other windows on every desktop but does not take focus, so you answer with a
+click:
 
-- **"I'm working"** (Polish: "Pracuję") — nothing changes, that hour counts as
-  work. The next prompt comes no earlier than after the next full hour of
-  idleness.
-- **"End work"** (Polish: "Zakończ pracę") or **no click within 5 min** — the
-  workday ends at the moment the idleness began (no earlier than the start of
-  work). The menu counter stops and the end goes into the history. The VPN stays
-  connected. Simply returning to the computer without clicking is not an answer.
+- **"I'm working"** (Polish: "Pracuję") — nothing changes, that idleness counts as
+  work. The next question comes after **Ask again every …** (by default the same as "End after"), counted
+  from the answer.
+- **"End work"** (Polish: "Zakończ pracę") or **no click within Time to answer**
+  (default 5 min) — the workday ends at the moment the idleness began (no earlier
+  than the start of work). The menu counter stops and the end goes into the
+  history with the source `inactivity`. The VPN stays connected. Simply returning
+  to the computer without clicking is not an answer.
 
-Disconnecting the VPN or the end of the day while the prompt is up hides the
-window without stopping the time. Every prompt and its outcome go to
-`~/Library/Logs/VPNTime.log`. A stopped day is resumed with `Save` in the
-"Work hours" window.
+If the Mac was asleep (e.g. with the lid closed) for at least as long as **End
+after**, the question appears on return with the text "No keyboard or mouse
+activity from 12:10 to 14:40 (2h 30m)."
 
-For testing: the hidden settings `idleThresholdSeconds` and `idleGraceSeconds`
-(`defaults write com.redge.vpntimebar …`) shorten both times, the
-`VPNTIME_IDLE_FILE` variable supplies the idle time from a file, and
-`VPNTIME_DATA_DIR` moves the data files to another folder.
+The settings are in the **"Work hours"** window, in the "End-of-work detection"
+section, with a minimum of 1 minute for each time. The **"Detect end of work"**
+(Polish: "Wykrywaj koniec pracy") toggle is also in the menu, below the "End of
+work" item. A switched-off toggle disables the question only; ends of past days
+are detected either way. In `defaults` these
+values are stored in seconds under the keys `idleThresholdSeconds`,
+`idleRepeatSeconds` and `idleGraceSeconds`.
+
+Disconnecting the VPN does not hide the question. Only the end of the day or
+turning detection off hides it, without stopping the time. Every question and its
+outcome go to `~/Library/Logs/VPNTime.log`. A stopped day is resumed with `Save` in
+the "Work hours" window — unless only the end-detection settings changed; then the
+day stays stopped.
+
+For testing: the `VPNTIME_IDLE_FILE` variable supplies the idle time from a file,
+and `VPNTIME_DATA_DIR` moves the data files to another folder.
 
 ## End of work
 
