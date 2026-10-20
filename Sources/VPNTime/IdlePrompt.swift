@@ -1,7 +1,7 @@
 import AppKit
 import VPNTimeCore
 
-// The "Czy to już koniec pracy?" window shown after an hour without keyboard
+// The "Is this the end of work?" window shown after an hour without keyboard
 // or mouse input while a workday is running. It floats above other windows on
 // every Space but does not take keyboard focus, so it only answers to a click.
 final class IdlePrompt: NSObject, NSWindowDelegate {
@@ -12,7 +12,7 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
     private var keepWorking: (() -> Void)?
     private var endNow: (() -> Void)?
 
-    private let headline = NSTextField(labelWithString: "Czy to już koniec pracy?")
+    private let headline = NSTextField(labelWithString: L("idle.headline"))
     private let message = NSTextField(wrappingLabelWithString: "")
     private let remaining = NSTextField(labelWithString: "")
     private let countdown = NSTextField(wrappingLabelWithString: "")
@@ -54,14 +54,17 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
         // window; an ongoing one counts up from when it began.
         if let until {
             let length = Int(until.timeIntervalSince(idleSince))
-            message.stringValue = "Od \(clock.string(from: idleSince)) do \(clock.string(from: until)) "
-                + "nie było aktywności klawiatury ani myszy (\(hoursMinutes(length)))."
+            message.stringValue = L(
+                "idle.messageRange",
+                clock.string(from: idleSince),
+                clock.string(from: until),
+                hoursMinutes(length)
+            )
         } else {
             let idle = Int(Date().timeIntervalSince(idleSince))
-            message.stringValue = "Od \(clock.string(from: idleSince)) nie było aktywności klawiatury ani myszy "
-                + "(\(hoursMinutes(idle)))."
+            message.stringValue = L("idle.message", clock.string(from: idleSince), hoursMinutes(idle))
         }
-        countdown.stringValue = "Bez odpowiedzi czas pracy zatrzyma się na \(clock.string(from: stopAt))."
+        countdown.stringValue = L("idle.countdown", clock.string(from: stopAt))
         tick()
 
         timer?.invalidate()
@@ -130,10 +133,10 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
         body.alignment = .top
         body.spacing = 18
 
-        let working = NSButton(title: "Pracuję", target: self, action: #selector(working))
+        let working = NSButton(title: L("idle.working"), target: self, action: #selector(working))
         working.keyEquivalent = "\r"
         working.setAccessibilityIdentifier("idleKeepWorking")
-        let end = NSButton(title: "Zakończ pracę", target: self, action: #selector(end))
+        let end = NSButton(title: L("idle.endWork"), target: self, action: #selector(end))
         end.setAccessibilityIdentifier("idleEndWork")
 
         for button in [working, end] {

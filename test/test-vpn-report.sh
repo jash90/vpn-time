@@ -17,6 +17,9 @@ assert_contains() {
   fi
 }
 
+# The Polish output is asserted first; the English one at the end.
+export VPN_REPORT_LANG=pl
+
 HOME="$(mktemp -d)"
 export HOME
 
@@ -74,5 +77,27 @@ export HOME
 printf '%s\tOffice_VPN\n' "$(( $(date +%s) - 7200 ))" > "$HOME/.vpn-sessions.state"
 out="$(bash "$ROOT/scripts/vpn-report.sh" day)"
 assert_contains "$out" "Aktywna sesja (Office_VPN): 2h 00m" "active session line"
+
+echo "vpn-report.sh in English"
+HOME="$(mktemp -d)"
+export HOME
+cat > "$HOME/.vpn-sessions.csv" <<'CSV'
+start_iso,end_iso,duration_s,config
+2026-07-08 07:27:37,2026-07-08 16:26:34,32338,Office_VPN
+CSV
+cat > "$HOME/.vpn-workdays.csv" <<'CSV'
+date,start_iso,end_iso,source
+2026-07-08,2026-07-08 07:20:05,2026-07-08 16:30:00,edited
+CSV
+printf '%s\tOffice_VPN\n' "$(( $(date +%s) - 3600 ))" > "$HOME/.vpn-sessions.state"
+out="$(VPN_REPORT_LANG=en bash "$ROOT/scripts/vpn-report.sh" day)"
+assert_contains "$out" "VPN time — days" "English title"
+assert_contains "$out" "2026-07-08     8h 58m   start 07:20  end 16:30" "English workday end"
+assert_contains "$out" "TOTAL:         8h 58m" "English total"
+assert_contains "$out" "Active session (Office_VPN): 1h 00m" "English active session"
+out="$(VPN_REPORT_LANG='' LC_ALL='' LC_MESSAGES='' LANG=pl_PL.UTF-8 bash "$ROOT/scripts/vpn-report.sh" week)"
+assert_contains "$out" "Czas na VPN — tygodnie" "Polish picked from LANG"
+out="$(VPN_REPORT_LANG='' LC_ALL='' LC_MESSAGES='' LANG=de_DE.UTF-8 bash "$ROOT/scripts/vpn-report.sh" month)"
+assert_contains "$out" "VPN time — months" "English fallback for other languages"
 
 exit "$fail"

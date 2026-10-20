@@ -7,6 +7,28 @@ STATE="$HOME/.vpn-sessions.state"
 WORKDAYS="$HOME/.vpn-workdays.csv"
 MODE="${1:-day}"
 
+# English by default; Polish when VPN_REPORT_LANG, LC_ALL, LC_MESSAGES or LANG
+# (first one set) starts with "pl".
+REPORT_LANG="${VPN_REPORT_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-en}}}}"
+
+if [[ "$REPORT_LANG" == pl* ]]; then
+  T_TITLE_DAY="Czas na VPN — dni"
+  T_TITLE_WEEK="Czas na VPN — tygodnie"
+  T_TITLE_MONTH="Czas na VPN — miesiące"
+  T_NO_DATA="Brak danych"
+  T_TOTAL="RAZEM:"
+  T_END="koniec"
+  T_ACTIVE="Aktywna sesja"
+else
+  T_TITLE_DAY="VPN time — days"
+  T_TITLE_WEEK="VPN time — weeks"
+  T_TITLE_MONTH="VPN time — months"
+  T_NO_DATA="No data"
+  T_TOTAL="TOTAL:"
+  T_END="end"
+  T_ACTIVE="Active session"
+fi
+
 hours_minutes() {
   printf '%dh %02dm' "$(( $1 / 3600 ))" "$(( ($1 % 3600) / 60 ))"
 }
@@ -21,14 +43,14 @@ bucket_of() {
   esac
 }
 
-# "start HH:MM" plus "koniec HH:MM" when known, from the app's
+# "start HH:MM" plus "end HH:MM" (localized) when known, from the app's
 # ~/.vpn-workdays.csv. Old rows have no end column (date,start_iso,source).
 workday_of() {
   [ -f "$WORKDAYS" ] || return 0
-  awk -F, -v day="$1" '
+  awk -F, -v day="$1" -v end_label="$T_END" '
     $1 == day {
       out = "start " substr($2, 12, 5)
-      if (NF >= 4 && $3 != "") out = out "  koniec " substr($3, 12, 5)
+      if (NF >= 4 && $3 != "") out = out "  " end_label " " substr($3, 12, 5)
       print out
       exit
     }' "$WORKDAYS"
@@ -37,7 +59,7 @@ workday_of() {
 buckets() {
   [ -f "$CSV" ] || return 0
 
-  tail -n +2 "$CSV" | while IFS=, read -r start_iso end_iso duration config; do
+  tail -n +2 "$CSV" | while IFS=, read -r start_iso _end_iso duration config; do
     case "${duration:-}" in
       ''|*[!0-9]*) continue ;;
     esac
@@ -49,14 +71,14 @@ buckets() {
 summed="$(buckets | awk -F'\t' '$1 != "" { s[$1] += $2 } END { for (k in s) printf "%s\t%d\n", k, s[k] }' | sort)"
 
 case "$MODE" in
-  week)  echo "Czas na VPN — tygodnie" ;;
-  month) echo "Czas na VPN — miesiące" ;;
-  *)     echo "Czas na VPN — dni" ;;
+  week)  echo "$T_TITLE_WEEK" ;;
+  month) echo "$T_TITLE_MONTH" ;;
+  *)     echo "$T_TITLE_DAY" ;;
 esac
 echo
 
 if [ -z "$summed" ]; then
-  echo "Brak danych"
+  echo "$T_NO_DATA"
 else
   total=0
 
@@ -76,7 +98,7 @@ else
   done <<< "$summed"
 
   echo
-  printf '%-14s %s\n' "RAZEM:" "$(hours_minutes "$total")"
+  printf '%-14s %s\n' "$T_TOTAL" "$(hours_minutes "$total")"
 fi
 
 if [ -f "$STATE" ]; then
@@ -87,7 +109,7 @@ if [ -f "$STATE" ]; then
     ''|*[!0-9]*) ;;
     *)
       echo
-      printf 'Aktywna sesja (%s): %s\n' "$config" "$(hours_minutes "$(( $(date +%s) - epoch ))")"
+      printf '%s (%s): %s\n' "$T_ACTIVE" "$config" "$(hours_minutes "$(( $(date +%s) - epoch ))")"
       ;;
   esac
 fi

@@ -12,6 +12,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
 cp bundle/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Localizations: <language>.lproj with Localizable.strings and InfoPlist.strings.
+for lproj in bundle/Resources/*.lproj; do
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 cp .build/release/VPNTime "$APP/Contents/MacOS/vpntime"
 
 # Shipped inside the bundle so an in-app update can refresh the tracker scripts
@@ -26,11 +30,23 @@ install -m 755 bundle/update-helper.sh "$APP/Contents/Resources/update-helper.sh
 # when no Developer ID certificate is in the keychain.
 # Matched by SHA-1 hash, not by name: two Developer ID certificates can carry
 # the same common name, and codesign refuses an ambiguous name.
-IDENTITY="${VPNTIME_SIGN_IDENTITY:-$(
+# Order: VPNTIME_SIGN_IDENTITY, then APPLE_SIGNING_IDENTITY (exported by the
+# caller or read from ~/.config/local-release/apple.env), then the first
+# Developer ID certificate in the keychain.
+LOCAL_RELEASE_ENV="${LOCAL_RELEASE_ENV:-$HOME/.config/local-release/apple.env}"
+if [ -z "${VPNTIME_SIGN_IDENTITY:-}" ] && [ -z "${APPLE_SIGNING_IDENTITY:-}" ] \
+  && [ -f "$LOCAL_RELEASE_ENV" ]; then
+  APPLE_SIGNING_IDENTITY="$(
+    # shellcheck disable=SC1090
+    . "$LOCAL_RELEASE_ENV" >/dev/null 2>&1 && printf '%s' "${APPLE_SIGNING_IDENTITY:-}"
+  )"
+fi
+
+IDENTITY="${VPNTIME_SIGN_IDENTITY:-${APPLE_SIGNING_IDENTITY:-$(
   security find-identity -v -p codesigning \
     | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "Developer ID Application:.*/\1/p' \
     | head -1
-)}"
+)}}"
 
 if [ -n "$IDENTITY" ]; then
   codesign --force --options runtime --timestamp \

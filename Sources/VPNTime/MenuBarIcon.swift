@@ -1,8 +1,9 @@
 import AppKit
+import VPNTimeCore
 
 enum MenuBarIcon {
-    static let connected = lock(shackleEndAngle: 0, accessibilityDescription: "VPN on")
-    static let disconnected = lock(shackleEndAngle: 20, accessibilityDescription: "VPN off")
+    static let connected = lock(shackleEndAngle: 0, accessibilityDescription: L("icon.vpnOn"))
+    static let disconnected = lock(shackleEndAngle: 20, accessibilityDescription: L("icon.vpnOff"))
 
     private static func lock(shackleEndAngle: CGFloat, accessibilityDescription: String) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in

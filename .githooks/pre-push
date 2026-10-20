@@ -1,0 +1,6 @@
+#!/bin/bash
+# Opt-in pre-push hook: runs the local CI before anything leaves the machine.
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skip in an emergency:   git push --no-verify
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/ci.sh"
