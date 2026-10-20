@@ -183,6 +183,8 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             } else {
                 text = record.duration.map(hoursMinutes) ?? "—"
             }
+        case "endSource":
+            text = WorkdayForm.label(for: record.endSource)
         default:
             text = WorkdayForm.label(for: WorkdayStart(date: record.start, source: record.source))
         }
@@ -261,6 +263,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             ("end", "Koniec", 65),
             ("length", "Czas", 70),
             ("source", "Źródło", 90),
+            ("endSource", "Koniec z", 90),
         ]
 
         for (id, title, width) in columns {
@@ -280,7 +283,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
-        scroll.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        scroll.widthAnchor.constraint(equalToConstant: 550).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: 220).isActive = true
         return scroll
     }

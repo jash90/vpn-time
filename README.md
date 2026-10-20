@@ -19,7 +19,7 @@ Dwa niezależne byty:
   `~/.vpn-sessions.csv`. Przy okazji notuje ciągi aktywności przy komputerze
   (`~/.vpn-activity.*`). Działa niezależnie od tego, czy apka jest uruchomiona.
 - **Widok** (`VPN Time.app`) — czyta te pliki co 15 s. Sam zapisuje tylko plist
-  autostartu i historię początków pracy (`~/.vpn-workdays.csv`). Zamknięcie apki
+  autostartu i historię dni pracy (`~/.vpn-workdays.csv`). Zamknięcie apki
   nie przerywa zbierania danych.
 
 Rdzeń logiki (`VPNTimeCore`) jest oddzielony od AppKit, żeby dał się testować
@@ -36,7 +36,7 @@ jednostkowo; `AppDelegate` jest cienki i weryfikowany end-to-end.
 | Agent apki | `~/Library/LaunchAgents/com.redge.vpntimebar.plist` |
 | Dane | `~/.vpn-sessions.csv`, `~/.vpn-sessions.state` |
 | Aktywność | `~/.vpn-activity.csv` (zamknięte ciągi), `~/.vpn-activity.state` (bieżący) |
-| Dni pracy | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source`) |
+| Dni pracy | `~/.vpn-workdays.csv` (`date,start_iso,end_iso,source,end_source`) |
 
 ## Instalacja
 
@@ -90,6 +90,9 @@ Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają okno ustawień
   znów jest wykrywany;
 - przełącznik wykrywania;
 - koniec: `Wyłączony`, `O godzinie` albo `Po … od początku pracy`;
+- wykrywanie końca pracy: przełącznik **Wykrywaj koniec pracy** i trzy czasy:
+  **Koniec po … bez aktywności** (domyślnie 1 h), **Pytaj ponownie co …**
+  (domyślnie tyle samo co „Koniec po”) i **Czas na odpowiedź** (domyślnie 5 min);
 - podgląd na żywo, np. `Dziś: 08:00 → 16:00 (8h 00m)`.
 
 `Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
@@ -107,8 +110,8 @@ zostaje na ekranie, gdy przełączasz się do innej aplikacji.
 
 Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od` i `do`, potem
 `Zapisz dzień`; wybranie daty, której nie ma w tabeli, dodaje nowy dzień.
-`Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło `poprawiony` i
-apka już ich nie nadpisuje.
+`Usuń dzień` kasuje wiersz. Poprawione minione dni mają źródło `poprawiony`
+(początek albo koniec) i apka już ich nie nadpisuje.
 
 Dzisiejszy wiersz powstaje z ustawień: start jak w menu, koniec według reguły
 końca pracy (np. start + 11 h). Zapis dzisiejszego dnia w tabeli ustawia
@@ -117,35 +120,52 @@ staje: `Praca 08:00–15:30 (ręcznie) · 7h 30m`. O zamknięciu Tunnelblicka da
 decyduje reguła. Dzisiejszego wiersza nie da się usunąć — służy do tego
 `Automatycznie`.
 
-Historia ma kolumny `date,start_iso,end_iso,source`; starsze pliki bez kolumny
-końca są czytane dalej. Po uruchomieniu apka uzupełnia brakujące minione dni:
-start według reguły wykrywania, koniec jako koniec ostatniej sesji VPN tego dnia.
+Historia ma kolumny `date,start_iso,end_iso,source,end_source`; starsze pliki
+(bez kolumny końca albo bez źródła końca) są czytane dalej. Koniec dnia wykrywa
+się tak samo jak początek: koniec ostatniej sesji VPN tego dnia, wydłużony o
+ciąg aktywności, który trwa dalej po rozłączeniu (przerwy do 30 min). Źródło
+końca widać w kolumnie **Koniec z**: `VPN`, `aktywność`, `bezczynność`,
+`ręcznie`, `plan` albo `poprawiony`. Planowany koniec (z reguły końca) jest tylko
+zgadywaniem — gdy dzień minie, zastępuje go wykryty. Uzupełnianie brakujących
+minionych dni dzieje się przy starcie apki, raz na dobę, gdy apka działa, i po
+przełączeniu wykrywania — o ile włączone jest **Wykrywaj początek pracy**.
 Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
 do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
 
-## Bezczynność
+## Koniec pracy — wykrywanie
 
-Podczas sesji VPN, w trakcie dnia pracy, apka co 5 s czyta czas od ostatniego
-użycia klawiatury lub myszy. Po **1 h** bez aktywności pokazuje okno
-**„Czy nadal pracujesz?”** z odliczaniem. Okno jest nad innymi oknami na każdym
-biurku, ale nie zabiera fokusu, więc odpowiada się kliknięciem:
+W trakcie dnia pracy apka co 5 s czyta czas od ostatniego użycia klawiatury lub
+myszy. Gdy bezczynność trwa tyle, ile **Koniec po … bez aktywności** (domyślnie
+1 h), pokazuje okno **„Czy to już koniec pracy?”** z odliczaniem. Działa także
+bez VPN-u, bo pytanie dotyczy dnia pracy, nie połączenia. Okno jest nad innymi
+oknami na każdym biurku, ale nie zabiera fokusu, więc odpowiada się kliknięciem:
 
-- **Pracuję** — nic się nie zmienia, ta godzina liczy się do pracy. Kolejne
-  pytanie najwcześniej po następnej pełnej godzinie bezczynności.
-- **Zakończ pracę** albo **brak kliknięcia przez 5 min** — dzień pracy kończy
-  się w chwili, gdy zaczęła się bezczynność (najwcześniej na początku pracy).
-  Licznik w menu staje, koniec trafia do historii. VPN zostaje połączony.
-  Sam powrót do komputera bez kliknięcia nie jest odpowiedzią.
+- **Pracuję** — nic się nie zmienia, ta bezczynność liczy się do pracy. Kolejne
+  pytanie za tyle, ile **Pytaj ponownie co …** (domyślnie 1 h), liczone od odpowiedzi.
+- **Zakończ pracę** albo brak kliknięcia przez **Czas na odpowiedź** (domyślnie
+  5 min) — dzień pracy kończy się w chwili, gdy zaczęła się bezczynność
+  (najwcześniej na początku pracy). Licznik w menu staje, koniec trafia do
+  historii ze źródłem `bezczynność`. VPN zostaje połączony. Sam powrót do
+  komputera bez kliknięcia nie jest odpowiedzią.
 
-Rozłączenie VPN-u albo koniec dnia w trakcie pytania chowa okno bez
-zatrzymywania czasu. Każde pytanie i jego wynik trafiają do
-`~/Library/Logs/VPNTime.log`. Zatrzymany dzień wznawia `Zapisz` w oknie
-„Czas pracy”.
+Gdy Mac był uśpiony (np. z zamkniętą klapą) co najmniej tyle, ile **Koniec po**,
+pytanie pojawia się po powrocie z tekstem „Od 12:10 do 14:40 nie było aktywności
+klawiatury ani myszy (2h 30m).”.
 
-Do testów: ukryte ustawienia `idleThresholdSeconds` i `idleGraceSeconds`
-(`defaults write com.redge.vpntimebar …`) skracają oba czasy, zmienna
-`VPNTIME_IDLE_FILE` podaje czas bezczynności z pliku, a `VPNTIME_DATA_DIR`
-przenosi pliki danych do innego folderu.
+Ustawienia są w oknie **Czas pracy**, w sekcji „Wykrywanie końca pracy”: minimum
+1 minuta przy każdym czasie. Przełącznik **Wykrywaj koniec pracy** jest też w
+menu, pod pozycją „Koniec pracy”. Wyłączony przełącznik wyłącza pytanie. W
+`defaults` te wartości leżą jako sekundy w kluczach `idleThresholdSeconds`,
+`idleRepeatSeconds` i `idleGraceSeconds`.
+
+Rozłączenie VPN-u nie chowa pytania. Chowa je dopiero koniec dnia albo
+wyłączenie wykrywania, bez zatrzymywania czasu. Każde pytanie i jego wynik
+trafiają do `~/Library/Logs/VPNTime.log`. Zatrzymany dzień wznawia `Zapisz` w
+oknie „Czas pracy” — chyba że zmieniły się tylko ustawienia wykrywania końca;
+wtedy dzień zostaje zatrzymany.
+
+Do testów: zmienna `VPNTIME_IDLE_FILE` podaje czas bezczynności z pliku, a
+`VPNTIME_DATA_DIR` przenosi pliki danych do innego folderu.
 
 ## Koniec pracy
 

@@ -6,6 +6,7 @@ import Foundation
 public struct IdleWatch {
     public static let defaultThreshold: TimeInterval = 60 * 60
     public static let defaultGrace: TimeInterval = 5 * 60
+    public static let defaultRepeat: TimeInterval = 60 * 60
 
     // The question on screen: when it appeared and when the inactivity began.
     public struct Prompt: Equatable {
@@ -28,24 +29,34 @@ public struct IdleWatch {
 
     public let threshold: TimeInterval
     public let grace: TimeInterval
+    public let repeatInterval: TimeInterval
 
-    public init(threshold: TimeInterval = defaultThreshold, grace: TimeInterval = defaultGrace) {
+    public init(
+        threshold: TimeInterval = defaultThreshold,
+        grace: TimeInterval = defaultGrace,
+        repeatInterval: TimeInterval = defaultRepeat
+    ) {
         self.threshold = threshold
         self.grace = grace
+        self.repeatInterval = repeatInterval
     }
 
-    // `watching` is true while there is something to stop: an active VPN
-    // session inside a workday that has not ended yet. An unanswered question
-    // ends the day at the start of the inactivity, never before the workday
-    // start. After "Pracuję" (`answeredAt`) only inactivity that began later
-    // is asked about again.
+    // `watching` is true while there is something to stop: a workday that has
+    // not ended yet. An unanswered question ends the day at the start of the
+    // inactivity, never before the workday start. After "Pracuję"
+    // (`answeredAt`) inactivity that began before the answer is asked about
+    // again once `repeatInterval` has passed since it; inactivity that began
+    // later follows the plain threshold. `previousInput` is the last input
+    // seen on the previous tick: a jump from it to the current last input
+    // means the app missed an idle period (the Mac slept, say).
     public func evaluate(
         now: Date,
         idleSeconds: TimeInterval,
         watching: Bool,
         workdayStart: Date?,
         prompt: Prompt?,
-        answeredAt: Date? = nil
+        answeredAt: Date? = nil,
+        previousInput: Date? = nil
     ) -> Action {
         guard watching else {
             return prompt == nil ? .none : .withdraw
@@ -61,11 +72,23 @@ public struct IdleWatch {
 
         let idleSince = now.addingTimeInterval(-idleSeconds)
 
+        // A missed idle period shows up as a jump of the last input time,
+        // with the system idle counter starting over. Ask about that break
+        // too, counting only the part after "Pracuję": the first input right
+        // after the answer must not look like the end of a long break.
+        if let previousInput {
+            let breakStart = max(previousInput, answeredAt ?? previousInput)
+
+            if idleSince.timeIntervalSince(breakStart) >= threshold {
+                return .ask(idleSince: breakStart)
+            }
+        }
+
         guard idleSeconds >= threshold else {
             return .none
         }
 
-        if let answeredAt, idleSince < answeredAt, now.timeIntervalSince(answeredAt) < threshold {
+        if let answeredAt, idleSince < answeredAt, now.timeIntervalSince(answeredAt) < repeatInterval {
             return .none
         }
 

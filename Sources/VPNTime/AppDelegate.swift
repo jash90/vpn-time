@@ -17,14 +17,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let workdayEndLastFiredKey = "workdayEndLastFired"
     private let workdayStartManualKey = "workdayStartManual"
     private let workdayStartDetectionKey = "workdayStartDetection"
+    private let workdayEndDetectionKey = "workdayEndDetection"
     private let workdayEndManualKey = "workdayEndManual"
+    private let workdayEndManualSourceKey = "workdayEndManualSource"
     private let updateLastCheckKey = "updateLastCheck"
     private let idleThresholdKey = "idleThresholdSeconds"
+    private let idleRepeatKey = "idleRepeatSeconds"
     private let idleGraceKey = "idleGraceSeconds"
     private var timer: Timer?
     private var idleTimer: Timer?
     private var idlePromptState: IdleWatch.Prompt?
     private var idleAnsweredAt: Date?
+    private var lastInputSeen: Date?
+    private var lastBackfillDay: Date?
     private let idlePrompt = IdlePrompt()
     private let updater = Updater()
     private var updateState = UpdateState.idle
@@ -62,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.imagePosition = .imageLeading
-        backfillHistory()
+        backfillHistoryIfNewDay()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -80,7 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let active = store.activeSession()
 
         workdayStart = resolveStart(sessions: sessions, active: active)
-        history.record(workdayStart.flatMap { $0.provisional ? nil : $0 }, end: todayEnd, day: Date())
+        backfillHistoryIfNewDay()
+        history.record(
+            workdayStart.flatMap { $0.provisional ? nil : $0 },
+            end: todayEnd,
+            day: Date()
+        )
 
         if let active {
             statusItem.button?.image = MenuBarIcon.connected
@@ -136,6 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         detection.state = detectionEnabled ? .on : .off
         menu.addItem(detection)
         menu.addItem(workdayEndItem())
+        let endDetection = action("Wykrywaj koniec pracy", #selector(toggleEndDetection))
+        endDetection.state = endDetectionEnabled ? .on : .off
+        menu.addItem(endDetection)
         menu.addItem(action("Dni pracy…", #selector(openWorkdayDays)))
 
         menu.addItem(.separator())
@@ -171,10 +184,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         history.backfill(
             detector: detector,
+            endDetector: WorkdayEndDetector(calendar: calendar),
+            useActivityForEnd: endDetectionEnabled,
             streaks: store.activityStreaks(),
             sessions: store.sessions(),
             today: Date()
         )
+    }
+
+    // Backfill also runs once per calendar day, so an app left running for
+    // days still fills in yesterday's end once the day turns.
+    private func backfillHistoryIfNewDay() {
+        let today = calendar.startOfDay(for: Date())
+
+        guard lastBackfillDay != today else {
+            return
+        }
+
+        lastBackfillDay = today
+        backfillHistory()
     }
 
     // Wall-clock time since the start; breaks are not subtracted.
@@ -216,11 +244,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // The end written to today's history row: one set by hand in the days
-    // table, otherwise the one the end rule plans. It only feeds the history;
-    // closing Tunnelblick still follows the rule.
-    private var todayEnd: Date? {
+    // table or by the inactivity question, otherwise the one the end rule
+    // plans. It only feeds the history; closing Tunnelblick still follows
+    // the rule.
+    private var todayEnd: WorkdayEndPoint? {
         if let manual = today(workdayEndManualKey) {
-            return manual
+            let source = WorkdayEndSource(
+                rawValue: UserDefaults.standard.string(forKey: workdayEndManualSourceKey) ?? ""
+            ) ?? .manual
+            return WorkdayEndPoint(date: manual, source: source)
         }
 
         guard let start = workdayStart?.date,
@@ -229,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        return planned
+        return WorkdayEndPoint(date: planned, source: .planned)
     }
 
     private var detectionEnabled: Bool {
@@ -238,6 +270,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleDetection() {
         UserDefaults.standard.set(!detectionEnabled, forKey: workdayStartDetectionKey)
+        lastBackfillDay = nil
+        refresh()
+    }
+
+    private var endDetectionEnabled: Bool {
+        UserDefaults.standard.object(forKey: workdayEndDetectionKey) as? Bool ?? true
+    }
+
+    @objc private func toggleEndDetection() {
+        UserDefaults.standard.set(!endDetectionEnabled, forKey: workdayEndDetectionKey)
+        lastBackfillDay = nil
         refresh()
     }
 
@@ -250,7 +293,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var currentSettings: WorkdaySettings {
-        WorkdaySettings(manualStart: manualStart, detectionEnabled: detectionEnabled, endRule: workdayEndRule)
+        let watch = idleWatch
+        return WorkdaySettings(
+            manualStart: manualStart,
+            detectionEnabled: detectionEnabled,
+            endRule: workdayEndRule,
+            endDetectionEnabled: endDetectionEnabled,
+            idleThreshold: watch.threshold,
+            idleRepeat: watch.repeatInterval,
+            idleGrace: watch.grace
+        )
     }
 
     // What detection alone finds today, shown next to "Automatycznie".
@@ -272,13 +324,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var idleWatch: IdleWatch {
         let defaults = UserDefaults.standard
+        let threshold = defaults.object(forKey: idleThresholdKey) as? Double ?? IdleWatch.defaultThreshold
+        // Re-asking used to follow the threshold; keep that until it is set.
         return IdleWatch(
-            threshold: defaults.object(forKey: idleThresholdKey) as? Double ?? IdleWatch.defaultThreshold,
-            grace: defaults.object(forKey: idleGraceKey) as? Double ?? IdleWatch.defaultGrace
+            threshold: threshold,
+            grace: defaults.object(forKey: idleGraceKey) as? Double ?? IdleWatch.defaultGrace,
+            repeatInterval: defaults.object(forKey: idleRepeatKey) as? Double ?? threshold
         )
     }
 
-    // Watches only during a VPN session inside a workday that is still running.
+    // Watches a workday that is still running; the VPN no longer has to be
+    // up, so walking away after disconnecting still ends the day.
     private func watchIdle() {
         guard let idle = IdleTime.seconds() else {
             return
@@ -286,8 +342,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let now = Date()
         let watch = idleWatch
-        let start = workdayStart.flatMap { $0.provisional ? nil : $0.date }
-        let watching = store.activeSession() != nil && start != nil && stoppedAt == nil
+        // The start is refreshed every 15 s, so right after midnight (or a
+        // wake from sleep) it can still be yesterday's.
+        let start = workdayStart.flatMap {
+            $0.provisional || !calendar.isDate($0.date, inSameDayAs: now) ? nil : $0.date
+        }
+        let watching = endDetectionEnabled && start != nil && stoppedAt == nil
+
+        // Input from before today's start (yesterday evening, before the lid
+        // closed) is no break inside this workday.
+        if !watching || lastInputSeen.map({ $0 < start ?? now }) == true {
+            lastInputSeen = nil
+        }
 
         switch watch.evaluate(
             now: now,
@@ -295,7 +361,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             watching: watching,
             workdayStart: start,
             prompt: idlePromptState,
-            answeredAt: idleAnsweredAt
+            answeredAt: idleAnsweredAt,
+            previousInput: lastInputSeen
         ) {
         case .none:
             break
@@ -303,8 +370,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let prompt = IdleWatch.Prompt(shownAt: now, idleSince: idleSince)
             idlePromptState = prompt
             appLog("idle: no input since \(clock.string(from: idleSince)), asking")
+            // A break noticed only after it ended asks from before the current
+            // last input; the question then names the whole window.
+            let lastInput = now.addingTimeInterval(-idle)
             idlePrompt.show(
                 idleSince: idleSince,
+                until: idleSince < lastInput ? lastInput : nil,
                 stopAt: max(idleSince, start ?? idleSince),
                 deadline: watch.deadline(of: prompt),
                 keepWorking: { [weak self] in self?.keepWorking() },
@@ -315,9 +386,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .stop(let end):
             stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s")
         case .withdraw:
-            appLog("idle: question withdrawn (VPN gone or workday over)")
+            appLog("idle: question withdrawn (workday over or detection off)")
             idlePromptState = nil
             idlePrompt.dismiss()
+        }
+
+        if watching {
+            lastInputSeen = now.addingTimeInterval(-idle)
         }
     }
 
@@ -334,12 +409,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         idlePromptState = nil
         idlePrompt.dismiss()
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
+        UserDefaults.standard.set(WorkdayEndSource.idle.rawValue, forKey: workdayEndManualSourceKey)
         refresh()
     }
 
     private func applyWorkdaySettings(_ settings: WorkdaySettings) {
         let defaults = UserDefaults.standard
         let ruleChanged = settings.endRule != workdayEndRule
+        // Tuning only the end detection must not resume a day it already
+        // stopped; saving the start or end settings still does.
+        let workdayChanged = ruleChanged
+            || settings.manualStart != manualStart
+            || settings.detectionEnabled != detectionEnabled
+        let detectionTuned = settings.endDetectionEnabled != endDetectionEnabled
+            || settings.idleThreshold != idleWatch.threshold
+            || settings.idleRepeat != idleWatch.repeatInterval
+            || settings.idleGrace != idleWatch.grace
+        let togglesChanged = settings.detectionEnabled != detectionEnabled
+            || settings.endDetectionEnabled != endDetectionEnabled
 
         if let start = settings.manualStart {
             defaults.set(start, forKey: workdayStartManualKey)
@@ -348,9 +435,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         defaults.set(settings.detectionEnabled, forKey: workdayStartDetectionKey)
+        defaults.set(settings.endDetectionEnabled, forKey: workdayEndDetectionKey)
+        defaults.set(settings.idleThreshold, forKey: idleThresholdKey)
+        defaults.set(settings.idleRepeat, forKey: idleRepeatKey)
+        defaults.set(settings.idleGrace, forKey: idleGraceKey)
         // The settings define the planned end again; an end typed into the
         // days table for today no longer applies.
-        defaults.removeObject(forKey: workdayEndManualKey)
+        if workdayChanged || !detectionTuned {
+            defaults.removeObject(forKey: workdayEndManualKey)
+            defaults.removeObject(forKey: workdayEndManualSourceKey)
+        }
+
+        // Past rows are filled with the detection that is on now.
+        if togglesChanged {
+            lastBackfillDay = nil
+        }
 
         switch settings.endRule {
         case .fixed(let end):
@@ -382,6 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyToday(start: Date, end: Date) {
         UserDefaults.standard.set(start, forKey: workdayStartManualKey)
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
+        UserDefaults.standard.set(WorkdayEndSource.manual.rawValue, forKey: workdayEndManualSourceKey)
         workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
         markWorkdayEndFiredIfPassed()
         // An open "Czas pracy" form would otherwise save its stale start over

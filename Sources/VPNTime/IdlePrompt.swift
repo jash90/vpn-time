@@ -1,9 +1,9 @@
 import AppKit
 import VPNTimeCore
 
-// The "Czy nadal pracujesz?" window shown after an hour without keyboard or
-// mouse input during a VPN session. It floats above other windows on every
-// Space but does not take keyboard focus, so it only answers to a click.
+// The "Czy to już koniec pracy?" window shown after an hour without keyboard
+// or mouse input while a workday is running. It floats above other windows on
+// every Space but does not take keyboard focus, so it only answers to a click.
 final class IdlePrompt: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var timer: Timer?
@@ -12,7 +12,7 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
     private var keepWorking: (() -> Void)?
     private var endNow: (() -> Void)?
 
-    private let headline = NSTextField(labelWithString: "Czy nadal pracujesz?")
+    private let headline = NSTextField(labelWithString: "Czy to już koniec pracy?")
     private let message = NSTextField(wrappingLabelWithString: "")
     private let remaining = NSTextField(labelWithString: "")
     private let countdown = NSTextField(wrappingLabelWithString: "")
@@ -35,6 +35,7 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
 
     func show(
         idleSince: Date,
+        until: Date?,
         stopAt: Date,
         deadline: Date,
         keepWorking: @escaping () -> Void,
@@ -49,9 +50,17 @@ final class IdlePrompt: NSObject, NSWindowDelegate {
             build()
         }
 
-        let idle = Int(Date().timeIntervalSince(idleSince))
-        message.stringValue = "Od \(clock.string(from: idleSince)) nie było aktywności klawiatury ani myszy "
-            + "(\(hoursMinutes(idle)))."
+        // A break that already ended (the Mac was asleep, say) is named as a
+        // window; an ongoing one counts up from when it began.
+        if let until {
+            let length = Int(until.timeIntervalSince(idleSince))
+            message.stringValue = "Od \(clock.string(from: idleSince)) do \(clock.string(from: until)) "
+                + "nie było aktywności klawiatury ani myszy (\(hoursMinutes(length)))."
+        } else {
+            let idle = Int(Date().timeIntervalSince(idleSince))
+            message.stringValue = "Od \(clock.string(from: idleSince)) nie było aktywności klawiatury ani myszy "
+                + "(\(hoursMinutes(idle)))."
+        }
         countdown.stringValue = "Bez odpowiedzi czas pracy zatrzyma się na \(clock.string(from: stopAt))."
         tick()
 

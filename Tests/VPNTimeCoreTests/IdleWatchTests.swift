@@ -114,4 +114,91 @@ final class IdleWatchTests: XCTestCase {
             .stop(at: now.addingTimeInterval(-30))
         )
     }
+
+    // The re-ask after "Pracuję" can be set separately from the threshold.
+    func testAsksAgainAfterTheRepeatInterval() {
+        let chatty = IdleWatch(threshold: 3600, grace: 300, repeatInterval: 1800)
+        let answered = now.addingTimeInterval(-1000)
+
+        XCTAssertEqual(
+            chatty.evaluate(
+                now: now, idleSeconds: 4600, watching: true, workdayStart: start,
+                prompt: nil, answeredAt: answered
+            ),
+            .none
+        )
+
+        let later = answered.addingTimeInterval(1800)
+        XCTAssertEqual(
+            chatty.evaluate(
+                now: later, idleSeconds: 6400, watching: true, workdayStart: start,
+                prompt: nil, answeredAt: answered
+            ),
+            .ask(idleSince: answered)
+        )
+    }
+
+    // The Mac slept through the idle period: the system idle counter starts
+    // over, so the break only shows up as a jump of the last input time.
+    func testAsksAboutABreakItSleptThrough() {
+        let previousInput = now.addingTimeInterval(-7200)
+
+        XCTAssertEqual(
+            watch.evaluate(
+                now: now, idleSeconds: 5, watching: true, workdayStart: start,
+                prompt: nil, previousInput: previousInput
+            ),
+            .ask(idleSince: previousInput)
+        )
+    }
+
+    func testTheSleptThroughBreakNeverEndsBeforeTheAnswer() {
+        let previousInput = now.addingTimeInterval(-7200)
+        let answered = now.addingTimeInterval(-5400)
+
+        XCTAssertEqual(
+            watch.evaluate(
+                now: now, idleSeconds: 60, watching: true, workdayStart: start,
+                prompt: nil, answeredAt: answered, previousInput: previousInput
+            ),
+            .ask(idleSince: answered)
+        )
+    }
+
+    // A break that ended before "Pracuję" is covered by the answer; only the
+    // repeat interval brings the question back.
+    func testABreakThatEndedBeforeTheAnswerFollowsTheRepeatInterval() {
+        let answered = now.addingTimeInterval(-1800)
+
+        XCTAssertEqual(
+            watch.evaluate(
+                now: now, idleSeconds: 2, watching: true, workdayStart: start,
+                prompt: nil, answeredAt: answered, previousInput: now.addingTimeInterval(-9000)
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            watch.evaluate(
+                now: now, idleSeconds: 7800, watching: true, workdayStart: start,
+                prompt: nil,
+                answeredAt: now.addingTimeInterval(-7200),
+                previousInput: now.addingTimeInterval(-14_400)
+            ),
+            .ask(idleSince: now.addingTimeInterval(-7200))
+        )
+    }
+
+    // The question was shown during a long idle period and answered; the
+    // next tick still remembers the input from before the break.
+    func testDoesNotAskAgainRightAfterTheAnswer() {
+        XCTAssertEqual(
+            watch.evaluate(
+                now: now, idleSeconds: 2, watching: true, workdayStart: start,
+                prompt: nil,
+                answeredAt: now.addingTimeInterval(-4),
+                previousInput: now.addingTimeInterval(-3700)
+            ),
+            .none
+        )
+    }
 }
