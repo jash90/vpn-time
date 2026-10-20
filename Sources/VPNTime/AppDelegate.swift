@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var history = WorkdayHistory(path: Self.dataPath(".vpn-workdays.csv"), calendar: calendar)
     private lazy var workdayForm = WorkdayForm(calendar: calendar)
     private lazy var workdayDays = WorkdayDays(calendar: calendar, history: history)
+    private lazy var settingsWindow = SettingsWindow(calendar: calendar)
 
     // The data files live in the home folder. VPNTIME_DATA_DIR points the app
     // at another folder, so it can be exercised without touching real data.
@@ -129,29 +130,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        let autostart = NSMenuItem(
-            title: L("menu.launchAtLogin"),
-            action: #selector(toggleAutostart),
-            keyEquivalent: ""
-        )
-        autostart.target = self
-        autostart.state = autostartEnabled() ? .on : .off
-        menu.addItem(autostart)
         menu.addItem(action(
             L("menu.workStart", manualStart.map { L("menu.workStart.manual", clock.string(from: $0)) } ?? L("menu.workStart.auto")),
             #selector(openWorkdayForm)
         ))
-
-        let detection = action(L("menu.detectStart"), #selector(toggleDetection))
-        detection.state = detectionEnabled ? .on : .off
-        menu.addItem(detection)
         menu.addItem(workdayEndItem())
-        let endDetection = action(L("menu.detectEnd"), #selector(toggleEndDetection))
-        endDetection.state = endDetectionEnabled ? .on : .off
-        menu.addItem(endDetection)
         menu.addItem(action(L("menu.workdays"), #selector(openWorkdayDays)))
 
         menu.addItem(.separator())
+        let settings = action(L("menu.settings"), #selector(openSettings))
+        settings.keyEquivalent = ","
+        menu.addItem(settings)
         menu.addItem(action(L("menu.showHistory"), #selector(revealCSV)))
         menu.addItem(action(L("menu.refresh"), #selector(refresh)))
         menu.addItem(.separator())
@@ -277,33 +266,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.object(forKey: workdayStartDetectionKey) as? Bool ?? true
     }
 
-    @objc private func toggleDetection() {
-        UserDefaults.standard.set(!detectionEnabled, forKey: workdayStartDetectionKey)
-        lastBackfillDay = nil
-        refresh()
-    }
-
     private var endDetectionEnabled: Bool {
         UserDefaults.standard.object(forKey: workdayEndDetectionKey) as? Bool ?? true
     }
 
-    @objc private func toggleEndDetection() {
-        UserDefaults.standard.set(!endDetectionEnabled, forKey: workdayEndDetectionKey)
-        refresh()
-    }
-
     @objc private func openWorkdayForm() {
         workdayForm.show(
-            settings: currentSettings,
+            manualStart: manualStart,
+            detectionEnabled: detectionEnabled,
+            endRule: workdayEndRule,
             detected: detectedStart(),
-            save: { [weak self] settings in self?.applyWorkdaySettings(settings) }
+            save: { [weak self] start in self?.applyTodayStart(start) }
         )
     }
 
-    private var currentSettings: WorkdaySettings {
+    @objc private func openSettings() {
+        let shown = currentSettings
+        settingsWindow.show(
+            settings: shown,
+            save: { [weak self] settings in self?.applySettings(settings, shown: shown) }
+        )
+    }
+
+    private var currentSettings: AppSettings {
         let watch = idleWatch
-        return WorkdaySettings(
-            manualStart: manualStart,
+        return AppSettings(
+            launchAtLogin: autostartEnabled(),
             detectionEnabled: detectionEnabled,
             endRule: workdayEndRule,
             endDetectionEnabled: endDetectionEnabled,
@@ -421,24 +409,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    private func applyWorkdaySettings(_ settings: WorkdaySettings) {
+    // Saving the "Dziś" form: today's manual start is set (or cleared), and
+    // a day the question or the days table already stopped resumes — the
+    // settings define the planned end again.
+    private func applyTodayStart(_ manualStart: Date?) {
         let defaults = UserDefaults.standard
-        let ruleChanged = settings.endRule != workdayEndRule
-        // Tuning only the end detection must not resume a day it already
-        // stopped; saving the start or end settings still does.
-        let workdayChanged = ruleChanged
-            || settings.manualStart != manualStart
-            || settings.detectionEnabled != detectionEnabled
-        let detectionTuned = settings.endDetectionEnabled != endDetectionEnabled
-            || settings.idleThreshold != idleWatch.threshold
-            || settings.idleRepeat != idleWatch.repeatInterval
-            || settings.idleGrace != idleWatch.grace
-        let startDetectionChanged = settings.detectionEnabled != detectionEnabled
 
-        if let start = settings.manualStart {
+        if let start = manualStart {
             defaults.set(start, forKey: workdayStartManualKey)
         } else {
             defaults.removeObject(forKey: workdayStartManualKey)
+        }
+
+        defaults.removeObject(forKey: workdayEndManualKey)
+        defaults.removeObject(forKey: workdayEndManualSourceKey)
+
+        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        markWorkdayEndFiredIfPassed()
+        refresh()
+    }
+
+    // Saving the settings window. Tuning only the end detection or autostart
+    // must not resume a day it already stopped; changing the end rule or the
+    // start detection still does.
+    // `shown` is what the window loaded: the login item is only touched when
+    // its checkbox changed, not when the agent file changed meanwhile.
+    private func applySettings(_ settings: AppSettings, shown: AppSettings) {
+        let defaults = UserDefaults.standard
+        let ruleChanged = settings.endRule != workdayEndRule
+        let startDetectionChanged = settings.detectionEnabled != detectionEnabled
+
+        if settings.launchAtLogin != shown.launchAtLogin {
+            setAutostart(settings.launchAtLogin)
         }
 
         defaults.set(settings.detectionEnabled, forKey: workdayStartDetectionKey)
@@ -446,9 +448,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(settings.idleThreshold, forKey: idleThresholdKey)
         defaults.set(settings.idleRepeat, forKey: idleRepeatKey)
         defaults.set(settings.idleGrace, forKey: idleGraceKey)
+
         // The settings define the planned end again; an end typed into the
         // days table for today no longer applies.
-        if workdayChanged || !detectionTuned {
+        if ruleChanged || startDetectionChanged {
             defaults.removeObject(forKey: workdayEndManualKey)
             defaults.removeObject(forKey: workdayEndManualSourceKey)
         }
@@ -473,13 +476,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Saving must not close the VPN on the spot: an end that has already
         // passed with the new settings only takes effect tomorrow. A new end
-        // rule may fire again today; moving only the start may not.
+        // rule may fire again today.
         if ruleChanged {
             defaults.removeObject(forKey: workdayEndLastFiredKey)
         }
 
         workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
         markWorkdayEndFiredIfPassed()
+        // An open "Dziś" window previews with the detection and end rule.
+        workdayForm.updatePreviewIfOpen(detectionEnabled: detectionEnabled, endRule: workdayEndRule)
         refresh()
     }
 
@@ -491,9 +496,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(WorkdayEndSource.manual.rawValue, forKey: workdayEndManualSourceKey)
         workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
         markWorkdayEndFiredIfPassed()
-        // An open "Czas pracy" form would otherwise save its stale start over
-        // the one just set, and drop today's end with it.
-        workdayForm.reloadIfOpen(settings: currentSettings, detected: detectedStart())
+        // An open "Dziś" form would otherwise save its stale start over the
+        // one just set, and drop today's end with it.
+        workdayForm.reloadIfOpen(
+            manualStart: manualStart,
+            detectionEnabled: detectionEnabled,
+            endRule: workdayEndRule,
+            detected: detectedStart()
+        )
         refresh()
     }
 
@@ -515,7 +525,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func workdayEndItem() -> NSMenuItem {
         action(
             L("menu.workEnd", workdayEndRule?.label ?? L("menu.workEnd.off")),
-            #selector(openWorkdayForm)
+            #selector(openSettings)
         )
     }
 
@@ -789,11 +799,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FileManager.default.fileExists(atPath: agentPath)
     }
 
-    @objc private func toggleAutostart() {
-        if autostartEnabled() {
-            runLaunchctl(["unload", agentPath])
-            try? FileManager.default.removeItem(atPath: agentPath)
-        } else {
+    // Called from the settings window, only when its checkbox changed.
+    private func setAutostart(_ enabled: Bool) {
+        if enabled {
             let plist = """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -811,9 +819,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             """
             try? plist.write(toFile: agentPath, atomically: true, encoding: .utf8)
             runLaunchctl(["load", agentPath])
+        } else {
+            runLaunchctl(["unload", agentPath])
+            try? FileManager.default.removeItem(atPath: agentPath)
         }
-
-        refresh()
     }
 
     private func runLaunchctl(_ arguments: [String]) {

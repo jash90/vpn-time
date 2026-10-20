@@ -1,7 +1,7 @@
 import AppKit
 
-// Shared building blocks for the small floating panels behind the
-// "Początek pracy" and "Koniec pracy" menu items.
+// Shared building blocks for the small floating panels: the today form, the
+// settings window and the days table.
 enum TimePickerPanel {
     static func picker(identifier: String, calendar: Calendar) -> NSDatePicker {
         let picker = NSDatePicker()

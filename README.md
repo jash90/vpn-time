@@ -85,31 +85,43 @@ How the app detects the start:
 - The source in parentheses: `activity` (the run began before the VPN), `VPN`
   (no earlier activity), `manual`.
 
-The **"Detect start of work"** (Polish: "Wykrywaj początek pracy") toggle in the
-menu turns detection off. Then only the manual value counts, and without one the
-menu shows `Work: not detected`.
+The **"Detect start of work"** (Polish: "Wykrywaj początek pracy") switch in the
+Settings window turns detection off. Then only the manual value counts, and
+without one the menu shows `Work: not detected`.
 
-## The "Work hours" form
+## Settings
 
-The **"Start of work"** (Polish: "Początek pracy") and **"End of work"**
-(Polish: "Koniec pracy") menu items open the settings window for **today**
-(the "Work hours" form, Polish: "Czas pracy"):
+The **"Settings…"** item (Polish: "Ustawienia…", shortcut ⌘,) opens the window
+with the persistent settings, in sections:
+
+- **General**: **Launch at login** (Polish: "Uruchamiaj przy logowaniu");
+- **Start of work**: the **Detect start of work** switch;
+- **End of work**: `Off`, `At` or `After … from the start of work`. The
+  "End of work: …" item in the menu opens this window too;
+- **End-of-work detection**: the **Detect end of work** switch and three times:
+  **End after … without activity** (default 1 h), **Ask again every …** (default
+  the same as "End after") and **Time to answer** (default 5 min).
+
+`Save` applies everything at once. If the end according to the new settings has
+already passed, nothing closes immediately. Today's manual end (from the workdays
+table or from the idle prompt) is cleared only when the end rule or the start
+detection changed, so a stopped day runs again then. Tuning the end detection or
+launch at login does not resume a stopped day. Saving an unchanged end rule will
+not fire it a second time on the same day.
+
+## The "Today" window
+
+The **"Start of work"** menu item (Polish: "Początek pracy") opens the **"Today"**
+window (Polish: "Dziś") for today's start:
 
 - start: `Automatic` (with a preview of what was detected) or `Manual` with a
   time. A manual value applies **to that day only**; the next day the start is
   detected again;
-- the detection toggle;
-- end: `Off`, `At` or `After … from the start of work`;
-- end-of-work detection: the **Detect end of work** toggle and three times:
-  **End after … without activity** (default 1 h), **Ask again every …** (default
-  the same as "End after") and **Time to answer** (default 5 min);
 - a live preview, e.g. `Today: 08:00 → 16:00 (8h 00m)`.
 
-`Save` applies everything at once. If the end according to the new settings has
-already passed, nothing closes immediately. Saving without changing the end rule
-will not fire it a second time on the same day. `Save` also clears today's
-manual end (from the workdays table or from the idle prompt), so a stopped day
-runs again.
+The end and the detection switches are in the Settings window. `Save` sets
+today's start and always clears today's manual end (from the workdays table or
+from the idle prompt), so a stopped day runs again.
 
 ## The "Work days" window
 
@@ -141,8 +153,8 @@ extended by an activity run that continues after the disconnect (breaks up to
 `activity`, `idle`, `manual`, `planned`, `edited`). The planned end (from the
 end-of-work rule) is only a guess; once the day is over, the detected end replaces
 it. Missing past days are filled in at launch, once a day while the app is
-running, and after toggling start detection — provided **Detect start of work**
-is on. While a VPN session from an earlier day is still running, filling in waits
+running, and after saving a changed start detection in Settings — provided
+**Detect start of work** is on. While a VPN session from an earlier day is still running, filling in waits
 until it closes.
 Days without a VPN connection do not go into the history.
 `vpn-report.sh` (day view) appends them to the row:
@@ -172,26 +184,25 @@ If the Mac was asleep (e.g. with the lid closed) for at least as long as **End
 after**, the question appears on return with the text "No keyboard or mouse
 activity from 12:10 to 14:40 (2h 30m)."
 
-The settings are in the **"Work hours"** window, in the "End-of-work detection"
+The settings are in the **Settings** window, in the "End-of-work detection"
 section, with a minimum of 1 minute for each time. The **"Detect end of work"**
-(Polish: "Wykrywaj koniec pracy") toggle is also in the menu, below the "End of
-work" item. A switched-off toggle disables the question only; ends of past days
-are detected either way. In `defaults` these
+(Polish: "Wykrywaj koniec pracy") switch is there too. A switched-off switch
+disables the question only; ends of past days are detected either way. In `defaults` these
 values are stored in seconds under the keys `idleThresholdSeconds`,
 `idleRepeatSeconds` and `idleGraceSeconds`.
 
 Disconnecting the VPN does not hide the question. Only the end of the day or
 turning detection off hides it, without stopping the time. Every question and its
-outcome go to `~/Library/Logs/VPNTime.log`. A stopped day is resumed with `Save` in
-the "Work hours" window — unless only the end-detection settings changed; then the
-day stays stopped.
+outcome go to `~/Library/Logs/VPNTime.log`. A stopped day is resumed by `Save` in
+the "Today" window, or by saving a changed end rule or start detection in Settings.
+Saving only the end-detection times or launch at login leaves the day stopped.
 
 For testing: the `VPNTIME_IDLE_FILE` variable supplies the idle time from a file,
 and `VPNTIME_DATA_DIR` moves the data files to another folder.
 
 ## End of work
 
-The end of work is set in the "Work hours" form. **At** is any hour and
+The end of work is set in the Settings window. **At** is any hour and
 minute. **After … from the start of work** is e.g. `08:00`, i.e. 8 h after the
 detected or manually set start. When that moment arrives, the app disconnects
 the VPN and quits Tunnelblick, which closes the session in the CSV.
@@ -288,7 +299,7 @@ from `otool -tV`. The record of that investigation:
 Five things in this repo do **not** come from the original and are deliberate
 changes: the app icon (the original had none), a custom menu bar glyph instead
 of the system `lock.fill` / `lock.open` symbols, the "End of work" feature, the
-"Start of work" feature (four new menu items in total) and the bash scripts
+"Start of work" feature (with the "Settings…" window that holds its switches) and the bash scripts
 themselves, which did not survive in any copy and were recreated from the
 contracts frozen in the tests. Later came in-menu updates, the "Work days" window
-and the idle prompt; `verify-menu.sh` now checks 22 items instead of 14.
+and the idle prompt; `verify-menu.sh` now checks 21 items instead of 14.

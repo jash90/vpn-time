@@ -82,28 +82,43 @@ Jak apka wykrywa start:
 - Źródło w nawiasie: `aktywność` (ciąg zaczął się przed VPN-em), `VPN` (brak
   wcześniejszej aktywności), `ręcznie`.
 
-Przełącznik **Wykrywaj początek pracy** w menu wyłącza wykrywanie. Wtedy liczy
-się tylko ręczna wartość, a bez niej menu pokazuje `Praca: nie wykryto`.
+Przełącznik **Wykrywaj początek pracy** w oknie ustawień wyłącza wykrywanie.
+Wtedy liczy się tylko ręczna wartość, a bez niej menu pokazuje `Praca: nie wykryto`.
 
-## Formularz „Czas pracy”
+## Ustawienia
 
-Pozycje **Początek pracy** i **Koniec pracy** w menu otwierają okno ustawień
-**dzisiejszego** dnia:
+Pozycja **Ustawienia…** (shortcut ⌘,) otwiera okno z trwałymi ustawieniami,
+podzielone na sekcje:
+
+- **Ogólne**: **Uruchamiaj przy logowaniu**;
+- **Początek pracy**: przełącznik **Wykrywaj początek pracy**;
+- **Koniec pracy**: `Wyłączony`, `O godzinie` albo `Po … od początku pracy`.
+  Pozycja „Koniec pracy: …” w menu też otwiera to okno;
+- **Wykrywanie końca pracy**: przełącznik **Wykrywaj koniec pracy** i trzy czasy:
+  **Koniec po … bez aktywności** (domyślnie 1 h), **Pytaj ponownie co …**
+  (domyślnie tyle samo co „Koniec po”) i **Czas na odpowiedź** (domyślnie 5 min).
+
+`Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
+minął, nic nie zamyka się od razu. Dzisiejszy ręczny koniec (z tabeli dni albo
+z pytania o bezczynność) jest kasowany tylko wtedy, gdy zmieniła się reguła końca
+pracy albo wykrywanie początku, więc zatrzymany dzień wtedy znów biegnie.
+Zmiana samego wykrywania końca albo uruchamiania przy logowaniu nie wznawia
+zatrzymanego dnia. Zapis bez zmiany reguły końca nie odpali go drugi raz tego
+samego dnia.
+
+## Okno „Dziś”
+
+Pozycja **Początek pracy** w menu otwiera okno **„Dziś”** z początkiem pracy na
+dzisiaj:
 
 - początek: `Automatycznie` (z podglądem, co zostało wykryte) albo `Ręcznie` z
   godziną. Ręczna wartość obowiązuje **tylko tego dnia**; następnego dnia start
   znów jest wykrywany;
-- przełącznik wykrywania;
-- koniec: `Wyłączony`, `O godzinie` albo `Po … od początku pracy`;
-- wykrywanie końca pracy: przełącznik **Wykrywaj koniec pracy** i trzy czasy:
-  **Koniec po … bez aktywności** (domyślnie 1 h), **Pytaj ponownie co …**
-  (domyślnie tyle samo co „Koniec po”) i **Czas na odpowiedź** (domyślnie 5 min);
 - podgląd na żywo, np. `Dziś: 08:00 → 16:00 (8h 00m)`.
 
-`Zapisz` zatwierdza wszystko naraz. Jeśli koniec według nowych ustawień już
-minął, nic nie zamyka się od razu. Zapis bez zmiany reguły końca nie odpali go
-drugi raz tego samego dnia. `Zapisz` kasuje też dzisiejszy ręczny koniec (z
-tabeli dni albo z pytania o bezczynność), więc zatrzymany dzień znów biegnie.
+Koniec i przełączniki wykrywania są w oknie ustawień. `Zapisz` ustawia początek
+dnia i zawsze kasuje dzisiejszy ręczny koniec (z tabeli dni albo z pytania o
+bezczynność), więc zatrzymany dzień znów biegnie.
 
 ## Okno „Dni pracy”
 
@@ -134,8 +149,8 @@ końca widać w kolumnie **Koniec z**: `VPN`, `aktywność`, `bezczynność`,
 `planned`, `edited`). Planowany koniec (z reguły końca) jest tylko
 zgadywaniem — gdy dzień minie, zastępuje go wykryty. Uzupełnianie brakujących
 minionych dni dzieje się przy starcie apki, raz na dobę, gdy apka działa, i po
-przełączeniu wykrywania początku — o ile włączone jest **Wykrywaj początek
-pracy**. Póki trwa sesja VPN z wcześniejszego dnia, uzupełnianie czeka na jej
+zapisaniu zmienionego wykrywania początku w Ustawieniach — o ile włączone jest
+**Wykrywaj początek pracy**. Póki trwa sesja VPN z wcześniejszego dnia, uzupełnianie czeka na jej
 zamknięcie.
 Dni bez VPN-a nie trafiają do historii. `vpn-report.sh` (widok dni) dopisuje je
 do wiersza: `2026-10-02     7h 40m   start 08:12  koniec 16:30`.
@@ -160,25 +175,26 @@ Gdy Mac był uśpiony (np. z zamkniętą klapą) co najmniej tyle, ile **Koniec 
 pytanie pojawia się po powrocie z tekstem „Od 12:10 do 14:40 nie było aktywności
 klawiatury ani myszy (2h 30m).”.
 
-Ustawienia są w oknie **Czas pracy**, w sekcji „Wykrywanie końca pracy”: minimum
-1 minuta przy każdym czasie. Przełącznik **Wykrywaj koniec pracy** jest też w
-menu, pod pozycją „Koniec pracy”. Wyłączony przełącznik wyłącza tylko pytanie;
-końce minionych dni są wykrywane tak czy inaczej. W
+Ustawienia są w oknie **Ustawienia…**, w sekcji „Wykrywanie końca pracy”: minimum
+1 minuta przy każdym czasie. Jest tam też przełącznik **Wykrywaj koniec pracy**.
+Wyłączony przełącznik wyłącza tylko pytanie; końce minionych dni są wykrywane
+tak czy inaczej. W
 `defaults` te wartości leżą jako sekundy w kluczach `idleThresholdSeconds`,
 `idleRepeatSeconds` i `idleGraceSeconds`.
 
 Rozłączenie VPN-u nie chowa pytania. Chowa je dopiero koniec dnia albo
 wyłączenie wykrywania, bez zatrzymywania czasu. Każde pytanie i jego wynik
 trafiają do `~/Library/Logs/VPNTime.log`. Zatrzymany dzień wznawia `Zapisz` w
-oknie „Czas pracy” — chyba że zmieniły się tylko ustawienia wykrywania końca;
-wtedy dzień zostaje zatrzymany.
+oknie „Dziś” albo zapis zmienionej reguły końca lub wykrywania początku w
+Ustawieniach; zapis samych czasów wykrywania końca albo uruchamiania przy
+logowaniu zostawia dzień zatrzymany.
 
 Do testów: zmienna `VPNTIME_IDLE_FILE` podaje czas bezczynności z pliku, a
 `VPNTIME_DATA_DIR` przenosi pliki danych do innego folderu.
 
 ## Koniec pracy
 
-Koniec pracy ustawia się w formularzu „Czas pracy”. **O godzinie** to dowolna
+Koniec pracy ustawia się w oknie „Ustawienia…”. **O godzinie** to dowolna
 godzina i minuta. **Po … od początku pracy** to np. `08:00`, czyli 8 h od
 wykrytego lub ręcznie ustawionego startu. Gdy ten moment nadejdzie, apka rozłącza
 VPN i zamyka Tunnelblicka, co domyka sesję w CSV.
@@ -266,7 +282,7 @@ System Events, stałe AppKit zdekodowane z `otool -tV`. Zapis tego śledztwa:
 Pięć rzeczy w tym repo **nie** pochodzi z oryginału i są świadomymi zmianami:
 ikona aplikacji (oryginał jej nie miał), własny glif w pasku menu zamiast
 systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy", funkcja
-„Początek pracy" (razem cztery nowe pozycje menu) oraz same skrypty bash, które
+„Początek pracy" wraz z oknem „Ustawienia…", które mieści jej przełączniki, oraz same skrypty bash, które
 nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
 testach. Później doszły aktualizacje z menu, okno „Dni pracy” i pytanie o
-bezczynność; `verify-menu.sh` sprawdza teraz 22 pozycje zamiast 14.
+bezczynność; `verify-menu.sh` sprawdza teraz 21 pozycji zamiast 14.

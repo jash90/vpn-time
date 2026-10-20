@@ -15,6 +15,8 @@
 # 2026-10-10: 'Dni pracy…' after 'Koniec pracy', and a stopped workday shows
 # 'Praca 08:00–14:05 (…)' — 22 entries.
 # 2026-10-20: 'Wykrywaj koniec pracy' toggle after 'Koniec pracy: …' — 23 entries.
+# 2026-10-20: settings moved to their own 'Ustawienia…' window; the launch-at-login
+# and both detection toggles left the menu — 21 entries.
 set -uo pipefail
 
 read_menu() {
@@ -71,20 +73,18 @@ if [ "$(printf '%s\n' "$menu" | sed -n 1p)" = "Czas na VPN" ]; then
   check 7  '^(● Połączony \(.+\) od [0-9]{2}:[0-9]{2}|○ Rozłączony)$'
   check 8  '^(Praca od [0-9]{2}:[0-9]{2}|Praca [0-9]{2}:[0-9]{2}–[0-9]{2}:[0-9]{2}) \((ręcznie|VPN|aktywność|bez VPN|poprawiony)\) · [0-9]+h [0-9]{2}m$|^Praca: nie wykryto$'
   check 9  '^SEP$'
-  check 10 '^Uruchamiaj przy logowaniu$'
-  check 11 '^Początek pracy: (auto|ręcznie [0-9]{2}:[0-9]{2})$'
-  check 12 '^Wykrywaj początek pracy$'
-  check 13 '^Koniec pracy: (wyłączony|[0-9]{2}:[0-9]{2}|[0-9]+h [0-9]{2}m od startu)$'
-  check 14 '^Wykrywaj koniec pracy$'
-  check 15 '^Dni pracy…$'
-  check 16 '^SEP$'
-  check 17 '^Pokaż plik z historią$'
-  check 18 '^Odśwież$'
-  check 19 '^SEP$'
-  check 20 '^Wersja [0-9]+(\.[0-9]+)*$'
-  check 21 '^(Sprawdź aktualizacje…|Sprawdzanie aktualizacji…|Zainstaluj aktualizację v[0-9.]+…|Pobieranie aktualizacji…)$'
-  check 22 '^SEP$'
-  check 23 '^Zakończ$'
+  check 10 '^Początek pracy: (auto|ręcznie [0-9]{2}:[0-9]{2})$'
+  check 11 '^Koniec pracy: (wyłączony|[0-9]{2}:[0-9]{2}|[0-9]+h [0-9]{2}m od startu)$'
+  check 12 '^Dni pracy…$'
+  check 13 '^SEP$'
+  check 14 '^Ustawienia…$'
+  check 15 '^Pokaż plik z historią$'
+  check 16 '^Odśwież$'
+  check 17 '^SEP$'
+  check 18 '^Wersja [0-9]+(\.[0-9]+)*$'
+  check 19 '^(Sprawdź aktualizacje…|Sprawdzanie aktualizacji…|Zainstaluj aktualizację v[0-9.]+…|Pobieranie aktualizacji…)$'
+  check 20 '^SEP$'
+  check 21 '^Zakończ$'
 else
   check 1  '^VPN time$'
   check 2  '^SEP$'
@@ -95,26 +95,24 @@ else
   check 7  '^(● Connected \(.+\) since [0-9]{2}:[0-9]{2}|○ Disconnected)$'
   check 8  '^(Work since [0-9]{2}:[0-9]{2}|Work [0-9]{2}:[0-9]{2}–[0-9]{2}:[0-9]{2}) \((manual|VPN|activity|no VPN|edited)\) · [0-9]+h [0-9]{2}m$|^Work: not detected$'
   check 9  '^SEP$'
-  check 10 '^Launch at login$'
-  check 11 '^Start of work: (auto|manual [0-9]{2}:[0-9]{2})$'
-  check 12 '^Detect start of work$'
-  check 13 '^End of work: (off|[0-9]{2}:[0-9]{2}|[0-9]+h [0-9]{2}m after start)$'
-  check 14 '^Detect end of work$'
-  check 15 '^Work days…$'
-  check 16 '^SEP$'
-  check 17 '^Show history file$'
-  check 18 '^Refresh$'
-  check 19 '^SEP$'
-  check 20 '^Version [0-9]+(\.[0-9]+)*$'
-  check 21 '^(Check for updates…|Checking for updates…|Install update v[0-9.]+…|Downloading update…)$'
-  check 22 '^SEP$'
-  check 23 '^Quit$'
+  check 10 '^Start of work: (auto|manual [0-9]{2}:[0-9]{2})$'
+  check 11 '^End of work: (off|[0-9]{2}:[0-9]{2}|[0-9]+h [0-9]{2}m after start)$'
+  check 12 '^Work days…$'
+  check 13 '^SEP$'
+  check 14 '^Settings…$'
+  check 15 '^Show history file$'
+  check 16 '^Refresh$'
+  check 17 '^SEP$'
+  check 18 '^Version [0-9]+(\.[0-9]+)*$'
+  check 19 '^(Check for updates…|Checking for updates…|Install update v[0-9.]+…|Downloading update…)$'
+  check 20 '^SEP$'
+  check 21 '^Quit$'
 fi
 
 count="$(printf '%s\n' "$menu" | grep -c .)"
 
-if [ "$count" -ne 23 ]; then
-  echo "FAIL: expected 23 menu entries, got $count"
+if [ "$count" -ne 21 ]; then
+  echo "FAIL: expected 21 menu entries, got $count"
   fail=1
 fi
 

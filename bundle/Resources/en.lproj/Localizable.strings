@@ -23,6 +23,7 @@
 "menu.workEnd" = "End of work: %@";
 "menu.workEnd.off" = "off";
 "menu.workdays" = "Work days…";
+"menu.settings" = "Settings…";
 "menu.showHistory" = "Show history file";
 "menu.refresh" = "Refresh";
 "menu.version" = "Version %@";
@@ -79,8 +80,8 @@
 "update.error.requirement" = "Could not build the signature requirement.";
 "update.error.team" = "The update is not signed by team %1$@ (OSStatus %2$ld).";
 
-/* Work hours window */
-"form.title" = "Work hours";
+/* Today window */
+"form.title" = "Today";
 "form.startCaption" = "Start of work today";
 "form.start.auto" = "Automatic";
 "form.start.manual" = "Manual";
@@ -100,7 +101,13 @@
 "form.preview.noEnd" = "Today: from %@, no end";
 "form.preview.endBeforeStart" = "Today: from %1$@, end %2$@ is before the start";
 "form.preview.range" = "Today: %1$@ → %2$@ (%3$@)";
-"form.hint" = "A manual start applies to today only. Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began.";
+"form.hint" = "A manual start applies to today only. Saving resumes a day that was stopped.";
+
+/* Settings window */
+"settings.title" = "Settings";
+"settings.generalCaption" = "General";
+"settings.startCaption" = "Start of work";
+"settings.hint" = "Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began.";
 
 /* Work days window */
 "days.title" = "Work days";

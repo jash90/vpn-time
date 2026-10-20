@@ -23,6 +23,7 @@
 "menu.workEnd" = "Koniec pracy: %@";
 "menu.workEnd.off" = "wyłączony";
 "menu.workdays" = "Dni pracy…";
+"menu.settings" = "Ustawienia…";
 "menu.showHistory" = "Pokaż plik z historią";
 "menu.refresh" = "Odśwież";
 "menu.version" = "Wersja %@";
@@ -79,8 +80,8 @@
 "update.error.requirement" = "Nie udało się zbudować wymagania podpisu.";
 "update.error.team" = "Aktualizacja nie jest podpisana przez zespół %1$@ (OSStatus %2$ld).";
 
-/* Work hours window */
-"form.title" = "Czas pracy";
+/* Today window */
+"form.title" = "Dziś";
 "form.startCaption" = "Początek pracy dziś";
 "form.start.auto" = "Automatycznie";
 "form.start.manual" = "Ręcznie";
@@ -100,7 +101,13 @@
 "form.preview.noEnd" = "Dziś: od %@, bez końca";
 "form.preview.endBeforeStart" = "Dziś: od %1$@, koniec %2$@ jest przed początkiem";
 "form.preview.range" = "Dziś: %1$@ → %2$@ (%3$@)";
-"form.hint" = "Ręczny początek obowiązuje tylko dziś. Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność.";
+"form.hint" = "Ręczny początek obowiązuje tylko dziś. Zapis wznawia dzień, który został zatrzymany.";
+
+/* Settings window */
+"settings.title" = "Ustawienia";
+"settings.generalCaption" = "Ogólne";
+"settings.startCaption" = "Początek pracy";
+"settings.hint" = "Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność.";
 
 /* Work days window */
 "days.title" = "Dni pracy";
