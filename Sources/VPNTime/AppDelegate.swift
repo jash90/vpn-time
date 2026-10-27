@@ -26,10 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let idleRepeatKey = "idleRepeatSeconds"
     private let idleGraceKey = "idleGraceSeconds"
     private let idleDisconnectKey = "idleDisconnectVPN"
+    private let noVPNModeKey = "noVPNMode"
     // When inactivity ended today's workday (the decision, not the end).
     private let workdayStoppedKey = "workdayStoppedAt"
     // Set once that stop actually took the VPN down.
     private let workdayStopDisconnectedKey = "workdayStopDisconnected"
+    // Set when the stop was "Zakończ pracę" rather than no answer.
+    private let workdayStopExplicitKey = "workdayStopExplicit"
     private var timer: Timer?
     private var idleTimer: Timer?
     private var idlePromptState: IdleWatch.Prompt?
@@ -47,10 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case installing
     }
     private var workdayStart: WorkdayStart?
-    private lazy var detector = WorkdayStartDetector(calendar: calendar)
+    // In the no-VPN mode a workday needs no VPN connection.
+    private var detector: WorkdayStartDetector {
+        WorkdayStartDetector(calendar: calendar, requireVPN: !noVPNMode)
+    }
     private lazy var history = WorkdayHistory(path: Self.dataPath(".vpn-workdays.csv"), calendar: calendar)
     private lazy var workdayForm = WorkdayForm(calendar: calendar)
-    private lazy var workdayDays = WorkdayDays(calendar: calendar, history: history)
+    private lazy var workdayDays = WorkdayDays(
+        calendar: calendar,
+        history: history,
+        sessions: { [weak self] in self?.currentSessions() ?? ([], nil) }
+    )
     private lazy var settingsWindow = SettingsWindow(calendar: calendar)
 
     // The data files live in the home folder. VPNTIME_DATA_DIR points the app
@@ -162,9 +172,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(disabled(L("menu.title")))
         menu.addItem(.separator())
-        menu.addItem(disabled(L("menu.today", hoursMinutes(totals.total(.today, sessions: sessions, active: active)))))
-        menu.addItem(disabled(L("menu.thisWeek", hoursMinutes(totals.total(.week, sessions: sessions, active: active)))))
-        menu.addItem(disabled(L("menu.thisMonth", hoursMinutes(totals.total(.month, sessions: sessions, active: active)))))
+        let records = history.records()
+        let split = { (bucket: Bucket) in
+            splitLabel(totals.split(bucket, sessions: sessions, active: active, records: records))
+        }
+        menu.addItem(disabled(L("menu.today", split(.today))))
+        menu.addItem(disabled(L("menu.thisWeek", split(.week))))
+        menu.addItem(disabled(L("menu.thisMonth", split(.month))))
         menu.addItem(.separator())
 
         if let active {
@@ -243,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         history.backfill(
             detector: detector,
-            endDetector: WorkdayEndDetector(calendar: calendar),
+            endDetector: WorkdayEndDetector(calendar: calendar, requireVPN: !noVPNMode),
             // The end-detection toggle only governs the question; past ends
             // always take the activity after the disconnect into account.
             useActivityForEnd: true,
@@ -368,7 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             idleThreshold: watch.threshold,
             idleRepeat: watch.repeatInterval,
             idleGrace: watch.grace,
-            idleDisconnect: idleDisconnectEnabled
+            idleDisconnect: idleDisconnectEnabled,
+            noVPNMode: noVPNMode
         )
     }
 
@@ -404,6 +419,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var idleDisconnectEnabled: Bool {
         UserDefaults.standard.object(forKey: idleDisconnectKey) as? Bool ?? true
+    }
+
+    // Work is measured from activity alone: no VPN is needed for a workday,
+    // and the app never disconnects the VPN or quits Tunnelblick.
+    private var noVPNMode: Bool {
+        UserDefaults.standard.bool(forKey: noVPNModeKey)
     }
 
     // Watches a workday that is still running; the VPN no longer has to be
@@ -457,11 +478,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 deadline: watch.deadline(of: prompt),
                 keepWorking: { [weak self] in self?.keepWorking() },
                 endNow: { [weak self] in
-                    self?.stopWorkday(at: max(idleSince, start ?? idleSince), reason: "ended from the question")
+                    self?.stopWorkday(at: max(idleSince, start ?? idleSince), reason: "ended from the question", explicit: true)
                 }
             )
         case .stop(let end):
-            stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s")
+            stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s", explicit: false)
         case .withdraw:
             appLog("idle: question withdrawn (workday over or detection off)")
             idlePromptState = nil
@@ -483,7 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // menu counter stops and the history row gets it. Unless switched off in
     // the settings the VPN goes down too, and its session ends at `end`, so
     // the inactivity is not counted as time on the VPN either.
-    private func stopWorkday(at end: Date, reason: String) {
+    private func stopWorkday(at end: Date, reason: String, explicit: Bool) {
         appLog("idle: workday stopped at \(clock.string(from: end)) (\(reason))")
         idlePromptState = nil
         idlePrompt.dismiss()
@@ -491,6 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(WorkdayEndSource.idle.rawValue, forKey: workdayEndManualSourceKey)
         UserDefaults.standard.set(Date(), forKey: workdayStoppedKey)
         UserDefaults.standard.removeObject(forKey: workdayStopDisconnectedKey)
+        UserDefaults.standard.set(explicit, forKey: workdayStopExplicitKey)
         disconnectAfterStop(at: end)
         refresh()
     }
@@ -511,7 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func disconnectAfterStop(at end: Date) {
-        guard idleDisconnectEnabled, let active = currentActive() else {
+        guard idleDisconnectEnabled, !noVPNMode, let active = currentActive() else {
             return
         }
 
@@ -540,25 +562,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // A VPN connection made after inactivity ended today's workday and took
     // the VPN down means the work goes on: the end set by the inactivity is
     // dropped. While the VPN stayed up, a session the poller split at a wake
-    // is no reconnect, so nothing resumes then.
+    // is no reconnect, so nothing resumes then. In the no-VPN mode nothing
+    // reconnects, so enough activity after the stop resumes the day instead.
     private func resumeIfReconnected(active: (Date, String)?) {
         let defaults = UserDefaults.standard
 
-        guard let active,
-              defaults.bool(forKey: workdayStopDisconnectedKey),
-              let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
+        guard let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
               calendar.isDate(stopped, inSameDayAs: Date()),
-              active.0 > stopped,
               today(workdayEndManualKey) != nil,
               defaults.string(forKey: workdayEndManualSourceKey) == WorkdayEndSource.idle.rawValue else {
             return
         }
 
-        appLog("idle: workday resumed, VPN connected at \(clock.string(from: active.0))")
+        if noVPNMode {
+            // A day ended with "Zakończ pracę" stays ended: evening activity
+            // is no sign of work the way reconnecting the VPN is.
+            guard !defaults.bool(forKey: workdayStopExplicitKey),
+                  detector.resumesWork(streaks: store.activityStreaks(), after: stopped) else {
+                return
+            }
+
+            appLog("idle: workday resumed, activity since the stop")
+        } else {
+            guard let active, defaults.bool(forKey: workdayStopDisconnectedKey), active.0 > stopped else {
+                return
+            }
+
+            appLog("idle: workday resumed, VPN connected at \(clock.string(from: active.0))")
+        }
+
         defaults.removeObject(forKey: workdayEndManualKey)
         defaults.removeObject(forKey: workdayEndManualSourceKey)
         defaults.removeObject(forKey: workdayStoppedKey)
         defaults.removeObject(forKey: workdayStopDisconnectedKey)
+        defaults.removeObject(forKey: workdayStopExplicitKey)
     }
 
     // Saving the "Dziś" form: today's manual start is set (or cleared), and
@@ -589,7 +626,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applySettings(_ settings: AppSettings, shown: AppSettings) {
         let defaults = UserDefaults.standard
         let ruleChanged = settings.endRule != workdayEndRule
-        let startDetectionChanged = settings.detectionEnabled != detectionEnabled
+        // The no-VPN mode changes how the start is detected.
+        let startDetectionChanged = settings.detectionEnabled != detectionEnabled || settings.noVPNMode != noVPNMode
 
         if settings.launchAtLogin != shown.launchAtLogin {
             setAutostart(settings.launchAtLogin)
@@ -601,6 +639,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(settings.idleRepeat, forKey: idleRepeatKey)
         defaults.set(settings.idleGrace, forKey: idleGraceKey)
         defaults.set(settings.idleDisconnect, forKey: idleDisconnectKey)
+        defaults.set(settings.noVPNMode, forKey: noVPNModeKey)
 
         // The settings define the planned end again; an end typed into the
         // days table for today no longer applies.
@@ -696,7 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func endWorkdayIfDue(active: (Date, String)?) {
-        guard active != nil, let rule = workdayEndRule else {
+        guard !noVPNMode, active != nil, let rule = workdayEndRule else {
             return
         }
 

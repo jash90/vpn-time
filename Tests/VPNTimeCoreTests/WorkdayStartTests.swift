@@ -166,4 +166,84 @@ final class WorkdayStartTests: XCTestCase {
             .manual
         )
     }
+
+    func testWithoutRequiringTheVPNTheFirstActivityStartsTheDay() {
+        let start = WorkdayStartDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            streaks: [streak("2026-10-02 09:30:00", "2026-10-02 10:00:00")],
+            vpnStarts: []
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 09:30:00"), source: .activity))
+    }
+
+    func testWithoutRequiringTheVPNAConnectionStillPlacesTheStart() {
+        let start = WorkdayStartDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            streaks: [
+                streak("2026-10-02 07:00:00", "2026-10-02 07:05:00"),
+                streak("2026-10-02 08:40:00", "2026-10-02 12:00:00"),
+            ],
+            vpnStarts: [date("2026-10-02 08:45:00")]
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 08:40:00"), source: .activity))
+    }
+
+    func testWithoutRequiringTheVPNAGlanceDoesNotStartTheDay() {
+        let detector = WorkdayStartDetector(calendar: calendar, requireVPN: false)
+
+        XCTAssertNil(detector.detect(
+            day: date("2026-10-02 07:30:00"),
+            streaks: [streak("2026-10-02 07:00:00", "2026-10-02 07:05:00")],
+            vpnStarts: []
+        ))
+        XCTAssertEqual(
+            detector.detect(
+                day: date("2026-10-02 12:00:00"),
+                streaks: [
+                    streak("2026-10-02 07:00:00", "2026-10-02 07:05:00"),
+                    streak("2026-10-02 09:00:00", "2026-10-02 12:00:00"),
+                ],
+                vpnStarts: []
+            ),
+            WorkdayStart(date: date("2026-10-02 09:00:00"), source: .activity)
+        )
+    }
+
+    func testWithoutRequiringTheVPNALaterConnectionKeepsTheMorning() {
+        let start = WorkdayStartDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 15:00:00"),
+            streaks: [
+                streak("2026-10-02 08:00:00", "2026-10-02 12:00:00"),
+                streak("2026-10-02 12:45:00", "2026-10-02 15:00:00"),
+            ],
+            vpnStarts: [date("2026-10-02 12:45:00")]
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 08:00:00"), source: .activity))
+    }
+
+    func testEnoughActivityAfterAStopResumesWork() {
+        let detector = WorkdayStartDetector(calendar: calendar, requireVPN: false)
+        let stopped = date("2026-10-02 13:05:00")
+
+        XCTAssertFalse(detector.resumesWork(
+            streaks: [streak("2026-10-02 08:00:00", "2026-10-02 12:00:00")],
+            after: stopped
+        ))
+        XCTAssertFalse(detector.resumesWork(
+            streaks: [streak("2026-10-02 13:30:00", "2026-10-02 13:40:00")],
+            after: stopped
+        ))
+        XCTAssertTrue(detector.resumesWork(
+            streaks: [streak("2026-10-02 13:30:00", "2026-10-02 13:45:00")],
+            after: stopped
+        ))
+        // A streak that began before the stop counts only from the stop.
+        XCTAssertFalse(detector.resumesWork(
+            streaks: [streak("2026-10-02 12:55:00", "2026-10-02 13:15:00")],
+            after: stopped
+        ))
+    }
 }

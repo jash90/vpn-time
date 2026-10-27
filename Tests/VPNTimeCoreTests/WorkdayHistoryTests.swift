@@ -246,9 +246,41 @@ final class WorkdayHistoryTests: XCTestCase {
 
         """)
     }
+
+    func testBackfillWithoutRequiringTheVPNRecordsDaysWithActivityOnly() {
+        let history = WorkdayHistory(path: path)
+
+        history.backfill(
+            detector: WorkdayStartDetector(requireVPN: false),
+            endDetector: WorkdayEndDetector(requireVPN: false),
+            useActivityForEnd: true,
+            streaks: [
+                ActivityStreak(start: date("2026-10-01 08:30:00"), end: date("2026-10-01 12:00:00")),
+                ActivityStreak(start: date("2026-10-01 13:00:00"), end: date("2026-10-01 16:00:00")),
+            ],
+            sessions: [],
+            today: date("2026-10-02 12:00:00")
+        )
+
+        XCTAssertEqual(contents(), """
+        date,start_iso,end_iso,source,end_source
+        2026-10-01,2026-10-01 08:30:00,2026-10-01 16:00:00,activity,activity
+
+        """)
+    }
+
 }
 
+// Without VPN sessions the split's total is the sum of the workdays.
 final class WorkdayTotalsTests: XCTestCase {
+    private struct WorkdayTotals {
+        let now: Date
+
+        func total(_ bucket: Bucket, records: [WorkdayRecord]) -> Int {
+            Totals(now: now).split(bucket, sessions: [], active: nil, records: records).total
+        }
+    }
+
     private func date(_ string: String) -> Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"

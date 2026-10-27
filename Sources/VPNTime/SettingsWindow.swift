@@ -10,6 +10,7 @@ struct AppSettings {
     var idleRepeat: TimeInterval
     var idleGrace: TimeInterval
     var idleDisconnect: Bool
+    var noVPNMode: Bool
 }
 
 // The "Ustawienia" window: the persistent settings — login, detection and
@@ -23,6 +24,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private let detection = NSButton(checkboxWithTitle: L("menu.detectStart"), target: nil, action: nil)
     private let endDetection = NSButton(checkboxWithTitle: L("menu.detectEnd"), target: nil, action: nil)
     private let idleDisconnect = NSButton(checkboxWithTitle: L("settings.idleDisconnect"), target: nil, action: nil)
+    private let noVPNMode = NSButton(checkboxWithTitle: L("settings.noVPNMode"), target: nil, action: nil)
     private let endOff = NSButton(radioButtonWithTitle: L("form.end.off"), target: nil, action: nil)
     private let endAt = NSButton(radioButtonWithTitle: L("form.end.at"), target: nil, action: nil)
     private let endAfter = NSButton(radioButtonWithTitle: L("form.end.after"), target: nil, action: nil)
@@ -57,6 +59,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         detection.state = settings.detectionEnabled ? .on : .off
         endDetection.state = settings.endDetectionEnabled ? .on : .off
         idleDisconnect.state = settings.idleDisconnect ? .on : .off
+        noVPNMode.state = settings.noVPNMode ? .on : .off
         idleThresholdPicker.dateValue = durationDate(settings.idleThreshold)
         idleRepeatPicker.dateValue = durationDate(settings.idleRepeat)
         idleGracePicker.dateValue = durationDate(settings.idleGrace)
@@ -105,7 +108,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             idleThreshold: duration(of: idleThresholdPicker),
             idleRepeat: duration(of: idleRepeatPicker),
             idleGrace: duration(of: idleGracePicker),
-            idleDisconnect: idleDisconnect.state == .on
+            idleDisconnect: idleDisconnect.state == .on,
+            noVPNMode: noVPNMode.state == .on
         )
     }
 
@@ -130,7 +134,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         idleThresholdPicker.isEnabled = detecting
         idleRepeatPicker.isEnabled = detecting
         idleGracePicker.isEnabled = detecting
-        idleDisconnect.isEnabled = detecting
+        // Without the VPN there is nothing to disconnect.
+        idleDisconnect.isEnabled = detecting && noVPNMode.state == .off
     }
 
     @objc private func chooseEnd(_ sender: NSButton) {
@@ -155,13 +160,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     // MARK: - Layout
 
     private func build() {
-        [launchAtLogin, detection, endDetection, idleDisconnect].forEach { $0.target = self; $0.action = #selector(changed) }
+        [launchAtLogin, noVPNMode, detection, endDetection, idleDisconnect].forEach { $0.target = self; $0.action = #selector(changed) }
         endRadios.forEach { $0.target = self; $0.action = #selector(chooseEnd(_:)) }
         [endTimePicker, durationPicker, idleThresholdPicker, idleRepeatPicker, idleGracePicker]
             .forEach { $0.target = self; $0.action = #selector(changed) }
 
         endDetection.setAccessibilityIdentifier("endDetection")
         idleDisconnect.setAccessibilityIdentifier("idleDisconnect")
+        noVPNMode.setAccessibilityIdentifier("noVPNMode")
 
         let save = NSButton(title: L("button.save"), target: self, action: #selector(saveSettings))
         save.keyEquivalent = "\r"
@@ -174,6 +180,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             views: [
                 TimePickerPanel.caption(L("settings.generalCaption")),
                 launchAtLogin,
+                noVPNMode,
                 TimePickerPanel.caption(L("settings.startCaption")),
                 detection,
                 TimePickerPanel.caption(L("form.endCaption")),

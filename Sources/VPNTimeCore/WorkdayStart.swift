@@ -24,10 +24,22 @@ public struct WorkdayStart: Hashable {
 public struct WorkdayStartDetector {
     private let calendar: Calendar
     private let gap: TimeInterval
+    // Off in the no-VPN mode: the day's activity is then a real start.
+    private let requireVPN: Bool
+    // In the no-VPN mode, the activity it takes to count as work: a glance
+    // at the laptop before work must not start (and soon stop) the day.
+    private let minimumWork: TimeInterval
 
-    public init(calendar: Calendar = .vpnTimeISO, gap: TimeInterval = 1800) {
+    public init(
+        calendar: Calendar = .vpnTimeISO,
+        gap: TimeInterval = 1800,
+        requireVPN: Bool = true,
+        minimumWork: TimeInterval = 900
+    ) {
         self.calendar = calendar
         self.gap = gap
+        self.requireVPN = requireVPN
+        self.minimumWork = minimumWork
     }
 
     // The start is the beginning of the activity streak that contains the day's
@@ -60,23 +72,41 @@ public struct WorkdayStartDetector {
             dayVPNStarts.append(first.start)
         }
 
-        let firstVPN = dayVPNStarts.min()
+        let vpnStart = dayVPNStarts.min().map { firstVPN in
+            let containing = dayStreaks.first {
+                $0.start <= firstVPN && firstVPN <= $0.end.addingTimeInterval(gap)
+            }
 
-        guard let firstVPN else {
-            return dayStreaks.first.map {
+            if let containing, containing.start < firstVPN {
+                return WorkdayStart(date: containing.start, source: .activity)
+            }
+
+            return WorkdayStart(date: firstVPN, source: .vpn)
+        }
+
+        guard !requireVPN else {
+            return vpnStart ?? dayStreaks.first.map {
                 WorkdayStart(date: $0.start, source: .activity, provisional: true)
             }
         }
 
-        let containing = dayStreaks.first {
-            $0.start <= firstVPN && firstVPN <= $0.end.addingTimeInterval(gap)
+        // Without the VPN the day starts with the first activity long enough
+        // to be work; a later connection never moves that start.
+        let activityStart = dayStreaks
+            .first { $0.end.timeIntervalSince($0.start) >= minimumWork }
+            .map { WorkdayStart(date: $0.start, source: .activity) }
+
+        guard let vpnStart, let activityStart else {
+            return vpnStart ?? activityStart
         }
 
-        if let containing, containing.start < firstVPN {
-            return WorkdayStart(date: containing.start, source: .activity)
-        }
+        return activityStart.date < vpnStart.date ? activityStart : vpnStart
+    }
 
-        return WorkdayStart(date: firstVPN, source: .vpn)
+    // In the no-VPN mode nothing reconnects after inactivity ended the day,
+    // so enough activity after `stopped` resumes it instead.
+    public func resumesWork(streaks: [ActivityStreak], after stopped: Date) -> Bool {
+        streaks.contains { $0.end.timeIntervalSince(max($0.start, stopped)) >= minimumWork }
     }
 
     // A manual start only counts on the day it was set; the next day falls back
