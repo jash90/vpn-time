@@ -120,7 +120,7 @@ State line: `"● Połączony (" + config + ") od " + HH:mm(start)` or `"○ Roz
 - the active session has been running since 10.09 (the previous ISO week), `Dziś: 0h 00m` and `Ten tydzień: 0h 00m`, but `Ten miesiąc: 250h 48m` includes its 120h 47m,
 - the CSV record `2026-09-07 07:31:22 → 2026-09-09 18:31:02` (212380 s) counts entirely toward 7 September.
 
-**Splitting sessions at midnight is out of scope.** This is a recreation, not a redesign.
+The recreation originally kept this rule. It was later changed on purpose: `Totals` now counts only the overlap of each session with the bucket's interval, so sessions are split at midnight, Monday and the first of the month. The menu bar title shows today's total, not the time since the current connection started. `scripts/vpn-report.sh` still uses the start-day rule.
 
 ### Data format
 

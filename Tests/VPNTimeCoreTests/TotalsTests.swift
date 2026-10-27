@@ -18,23 +18,37 @@ final class TotalsTests: XCTestCase {
         return formatter.date(from: string)!
     }
 
-    func testMultiDaySessionCountsWhollyIntoItsStartDay() {
+    func testMultiDaySessionIsSplitAcrossTheDaysItSpans() {
         let now = date("2026-09-09 20:00:00")
         let totals = Totals(calendar: calendar, now: now)
-        let sessions = [Session(start: date("2026-09-07 07:31:22"), duration: 212380)]
+        // 2026-09-07 07:31:22 → 2026-09-09 18:31:42
+        let sessions = [Session(start: date("2026-09-07 07:31:22"), duration: 212420)]
 
-        XCTAssertEqual(totals.total(.today, sessions: sessions, active: nil), 0)
-        XCTAssertEqual(totals.total(.week, sessions: sessions, active: nil), 212380)
+        XCTAssertEqual(totals.total(.today, sessions: sessions, active: nil), 18 * 3600 + 31 * 60 + 42)
+        XCTAssertEqual(totals.total(.week, sessions: sessions, active: nil), 212420)
     }
 
-    func testActiveSessionCountsIntoTheBucketOfItsStart() {
+    func testActiveSessionFromAnEarlierDayCountsTodayFromMidnight() {
+        let now = date("2026-10-27 10:16:00")
+        let start = date("2026-10-26 07:58:00")
+        let totals = Totals(calendar: calendar, now: now)
+        let active = (start, "Office_VPN_bartlomiej_zimny")
+
+        XCTAssertEqual(totals.total(.today, sessions: [], active: active), 10 * 3600 + 16 * 60)
+        XCTAssertEqual(totals.total(.week, sessions: [], active: active), Int(now.timeIntervalSince(start)))
+    }
+
+    func testActiveSessionFromThePreviousWeekCountsOnlyThisWeeksPart() {
         let now = date("2026-09-15 08:31:30")
         let start = date("2026-09-10 07:44:00")
         let totals = Totals(calendar: calendar, now: now)
         let active = (start, "Office_VPN_bartlomiej_zimny")
 
-        XCTAssertEqual(totals.total(.today, sessions: [], active: active), 0)
-        XCTAssertEqual(totals.total(.week, sessions: [], active: active), 0)
+        XCTAssertEqual(totals.total(.today, sessions: [], active: active), 8 * 3600 + 31 * 60 + 30)
+        XCTAssertEqual(
+            totals.total(.week, sessions: [], active: active),
+            Int(now.timeIntervalSince(date("2026-09-14 00:00:00")))
+        )
         XCTAssertEqual(
             totals.total(.month, sessions: [], active: active),
             Int(now.timeIntervalSince(start))

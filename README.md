@@ -2,8 +2,8 @@
 
 English | [Polski](README.pl.md)
 
-A macOS tracker for time spent on the VPN (Tunnelblick): a menu bar icon with a
-counter for the current session and totals for today / this week / this month,
+A macOS tracker for time spent on the VPN (Tunnelblick): a menu bar icon with
+today's VPN time and totals for today / this week / this month,
 plus a terminal report.
 
 It exists because Tunnelblick does not record cumulative time — the log of a
@@ -303,3 +303,9 @@ of the system `lock.fill` / `lock.open` symbols, the "End of work" feature, the
 themselves, which did not survive in any copy and were recreated from the
 contracts frozen in the tests. Later came in-menu updates, the "Work days" window
 and the idle prompt; `verify-menu.sh` now checks 21 items instead of 14.
+The totals also differ from the original: only the part of a session inside
+the day / week / month counts, so a connection left open overnight is split at
+midnight (the original put a whole session into the bucket of its start), and
+the menu bar shows today's total instead of the time since the current
+connection started. `vpn-report.sh` keeps the original rule and still counts
+each finished session in the day it started.

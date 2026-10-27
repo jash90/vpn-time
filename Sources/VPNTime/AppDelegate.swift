@@ -95,7 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let active {
             statusItem.button?.image = MenuBarIcon.connected
-            statusItem.button?.title = counter(Int(Date().timeIntervalSince(active.0)))
+            statusItem.button?.title = counter(
+                Totals(calendar: calendar, now: Date()).total(.today, sessions: sessions, active: active)
+            )
             statusItem.button?.toolTip = L("tooltip.vpnActive", active.1)
         } else {
             statusItem.button?.image = MenuBarIcon.disconnected

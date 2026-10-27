@@ -3,7 +3,7 @@
 [English](README.md) | Polski
 
 Tracker czasu spędzonego na VPN-ie (Tunnelblick) dla macOS: ikona w pasku menu
-z licznikiem bieżącej sesji i sumami dziś / ten tydzień / ten miesiąc, plus
+z dzisiejszym czasem na VPN-ie i sumami dziś / ten tydzień / ten miesiąc, plus
 raport w terminalu.
 
 Powstał, bo Tunnelblick nie zapisuje sumarycznego czasu — log pojedynczego
@@ -286,3 +286,9 @@ systemowych symboli `lock.fill` / `lock.open`, funkcja „Koniec pracy", funkcja
 nie przetrwały w żadnej kopii i zostały odtworzone z kontraktów zamrożonych w
 testach. Później doszły aktualizacje z menu, okno „Dni pracy” i pytanie o
 bezczynność; `verify-menu.sh` sprawdza teraz 21 pozycji zamiast 14.
+Inaczej niż w oryginale liczone są też sumy: liczy się tylko ta część sesji,
+która mieści się w danym dniu / tygodniu / miesiącu, więc połączenie zostawione
+na noc dzieli się o północy (oryginał wrzucał całą sesję do kubełka jej
+startu), a pasek menu pokazuje dzisiejszą sumę zamiast czasu od początku
+bieżącego połączenia. `vpn-report.sh` zostaje przy regule oryginału i nadal
+liczy każdą zakończoną sesję do dnia, w którym się zaczęła.
