@@ -108,7 +108,7 @@
 "settings.generalCaption" = "General";
 "settings.startCaption" = "Start of work";
 "settings.idleDisconnect" = "Disconnect the VPN when inactivity ends the day";
-"settings.hint" = "Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began, and the VPN session ends then too. Connecting the VPN again resumes the day.";
+"settings.hint" = "Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began, and the VPN session ends then too. Connecting the VPN again after that resumes the day.";
 
 /* Work days window */
 "days.title" = "Work days";

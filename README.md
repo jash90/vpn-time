@@ -186,8 +186,8 @@ click:
   ends at the same moment, so the idleness does not count as VPN time either
   (the app writes `~/.vpn-sessions.stop`, which the poller applies once the VPN
   is down). The **"Disconnect the VPN when inactivity ends the day"** switch
-  turns the disconnecting off. Connecting the VPN again the same day resumes the
-  workday. Simply returning to the computer without clicking is not an answer.
+  turns the disconnecting off. Connecting the VPN again the same day, after the
+  app disconnected it, resumes the workday. Simply returning to the computer without clicking is not an answer.
 
 A VPN session still running from an earlier day is watched as well, so working
 past midnight and then walking away still ends it.
@@ -320,6 +320,9 @@ the day / week / month counts, so a connection left open overnight is split at
 midnight (the original put a whole session into the bucket of its start), and
 the menu bar shows the running workday's time (today's VPN total when no
 workday is detected) instead of the time since the current connection started.
+It stops when the workday ends (inactivity, an end set by hand, or the planned
+end once it has passed); with end detection off it also stops when the VPN goes
+down.
 Inactivity that ends the workday also disconnects the VPN, and the poller
 splits a session at a sleep. `vpn-report.sh` keeps the original rule and still counts
 each finished session in the day it started.

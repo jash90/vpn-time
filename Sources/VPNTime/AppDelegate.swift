@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let idleDisconnectKey = "idleDisconnectVPN"
     // When inactivity ended today's workday (the decision, not the end).
     private let workdayStoppedKey = "workdayStoppedAt"
+    // Set once that stop actually took the VPN down.
+    private let workdayStopDisconnectedKey = "workdayStopDisconnected"
     private var timer: Timer?
     private var idleTimer: Timer?
     private var idlePromptState: IdleWatch.Prompt?
@@ -136,7 +138,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // today's time on the VPN while it is up.
     private func menuBarCounter(sessions: [Session], active: (Date, String)?) -> String {
         if let start = workdayStart, !start.provisional {
-            return stoppedAt == nil ? counter(max(0, Int(Date().timeIntervalSince(start.date)))) : ""
+            let plannedEndPassed = todayEnd.map { $0.source == .planned && $0.date <= Date() } ?? false
+
+            // Without end detection nothing would stop the counter once the
+            // VPN is down, so it then stops with the VPN, as it used to.
+            guard stoppedAt == nil, !plannedEndPassed, active != nil || endDetectionEnabled else {
+                return ""
+            }
+
+            return counter(max(0, Int(Date().timeIntervalSince(start.date))))
         }
 
         guard active != nil else {
@@ -480,6 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
         UserDefaults.standard.set(WorkdayEndSource.idle.rawValue, forKey: workdayEndManualSourceKey)
         UserDefaults.standard.set(Date(), forKey: workdayStoppedKey)
+        UserDefaults.standard.removeObject(forKey: workdayStopDisconnectedKey)
         disconnectAfterStop(at: end)
         refresh()
     }
@@ -511,22 +522,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appLog("idle: disconnecting the VPN, session ends at \(clock.string(from: request.end))")
 
         quitTunnelblick(context: "idle stop") { [weak self] disconnected in
+            guard let self else {
+                return
+            }
+
             guard !disconnected else {
+                UserDefaults.standard.set(true, forKey: self.workdayStopDisconnectedKey)
                 return
             }
 
             // The VPN stayed up, so later work must not be cut off at `end`.
-            self?.store.clearStopRequest()
-            self?.refresh()
+            self.store.clearStopRequest()
+            self.refresh()
         }
     }
 
-    // A VPN connection made after inactivity ended today's workday means the
-    // work goes on: the end set by the inactivity is dropped.
+    // A VPN connection made after inactivity ended today's workday and took
+    // the VPN down means the work goes on: the end set by the inactivity is
+    // dropped. While the VPN stayed up, a session the poller split at a wake
+    // is no reconnect, so nothing resumes then.
     private func resumeIfReconnected(active: (Date, String)?) {
         let defaults = UserDefaults.standard
 
         guard let active,
+              defaults.bool(forKey: workdayStopDisconnectedKey),
               let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
               calendar.isDate(stopped, inSameDayAs: Date()),
               active.0 > stopped,
@@ -539,6 +558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.removeObject(forKey: workdayEndManualKey)
         defaults.removeObject(forKey: workdayEndManualSourceKey)
         defaults.removeObject(forKey: workdayStoppedKey)
+        defaults.removeObject(forKey: workdayStopDisconnectedKey)
     }
 
     // Saving the "Dziś" form: today's manual start is set (or cleared), and

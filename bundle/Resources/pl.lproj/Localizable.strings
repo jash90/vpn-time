@@ -108,7 +108,7 @@
 "settings.generalCaption" = "Ogólne";
 "settings.startCaption" = "Początek pracy";
 "settings.idleDisconnect" = "Rozłączaj VPN, gdy bezczynność kończy dzień";
-"settings.hint" = "Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność, i wtedy też kończy się sesja VPN. Ponowne połączenie z VPN-em wznawia dzień.";
+"settings.hint" = "Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność, i wtedy też kończy się sesja VPN. Ponowne połączenie z VPN-em po takim rozłączeniu wznawia dzień.";
 
 /* Work days window */
 "days.title" = "Dni pracy";

@@ -177,7 +177,8 @@ oknami na każdym biurku, ale nie zabiera fokusu, więc odpowiada się kliknięc
   się w tej samej chwili, więc bezczynność nie liczy się też jako czas na VPN-ie
   (apka zapisuje `~/.vpn-sessions.stop`, który poller stosuje po rozłączeniu).
   Rozłączanie wyłącza przełącznik **Rozłączaj VPN, gdy bezczynność kończy
-  dzień**. Ponowne połączenie z VPN-em tego samego dnia wznawia dzień pracy. Sam
+  dzień**. Ponowne połączenie z VPN-em tego samego dnia, po rozłączeniu go przez apkę,
+  wznawia dzień pracy. Sam
   powrót do komputera bez kliknięcia nie jest odpowiedzią.
 
 Pilnowana jest też sesja VPN trwająca od wcześniejszego dnia, więc praca po
@@ -303,6 +304,9 @@ która mieści się w danym dniu / tygodniu / miesiącu, więc połączenie zost
 na noc dzieli się o północy (oryginał wrzucał całą sesję do kubełka jej
 startu), a pasek menu pokazuje czas bieżącego dnia pracy (dzisiejszą sumę na VPN-ie,
 gdy dnia pracy nie wykryto) zamiast czasu od początku bieżącego połączenia.
+Staje, gdy dzień pracy się kończy (bezczynność, koniec ustawiony ręcznie albo
+zaplanowany koniec, gdy minie); przy wyłączonym wykrywaniu końca staje też z
+rozłączeniem VPN-u.
 Bezczynność, która kończy dzień pracy, rozłącza też VPN, a poller dzieli sesję
 przy uśpieniu Maca. `vpn-report.sh` zostaje przy regule oryginału i nadal
 liczy każdą zakończoną sesję do dnia, w którym się zaczęła.
