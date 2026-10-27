@@ -19,9 +19,11 @@ public struct Totals {
         return vpnSeconds(in: interval, sessions: sessions, active: active)
     }
 
-    // Work time split by the VPN: `vpn` is all VPN time in the bucket, as
-    // `total` counts it; `noVPN` is the part of the bucket's workdays when the
-    // VPN was down. Together they are the time worked.
+    // Work time split by the VPN. On a day with a recorded workday, `vpn` is
+    // the VPN time inside it and `noVPN` the rest of it, so together they are
+    // the workday's length; a VPN left up after the day ended is no work. On
+    // a day without one (detection off, say, or a past day with no end) all
+    // of the day's VPN time counts.
     public func split(
         _ bucket: Bucket,
         sessions: [Session],
@@ -32,12 +34,41 @@ public struct Totals {
             return WorkSplit(vpn: 0, noVPN: 0)
         }
 
-        let noVPN = records
-            .filter { bucketInterval.contains($0.start) }
-            .compactMap { $0.interval(now: now, calendar: calendar) }
-            .reduce(0) { $0 + noVPNSeconds(in: $1, sessions: sessions, active: active) }
+        var vpn = 0
+        var noVPN = 0
+        var day = bucketInterval.start
 
-        return WorkSplit(vpn: total(bucket, sessions: sessions, active: active), noVPN: noVPN)
+        while day < min(bucketInterval.end, now) {
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else {
+                break
+            }
+
+            let record = records.first { calendar.isDate($0.start, inSameDayAs: day) }
+            let split = self.split(record: record, day: DateInterval(start: day, end: next), sessions: sessions, active: active)
+            vpn += split.vpn
+            noVPN += split.noVPN
+            day = next
+        }
+
+        return WorkSplit(vpn: vpn, noVPN: noVPN)
+    }
+
+    // One day of `split`: inside its workday when it has one, otherwise all
+    // of `day`'s VPN time.
+    public func split(
+        record: WorkdayRecord?,
+        day: DateInterval,
+        sessions: [Session],
+        active: (Date, String)?
+    ) -> WorkSplit {
+        guard let workday = record?.interval(now: now, calendar: calendar) else {
+            return WorkSplit(vpn: vpnSeconds(in: day, sessions: sessions, active: active), noVPN: 0)
+        }
+
+        return WorkSplit(
+            vpn: vpnSeconds(in: workday, sessions: sessions, active: active),
+            noVPN: noVPNSeconds(in: workday, sessions: sessions, active: active)
+        )
     }
 
     // The part of `interval` (up to now) without the VPN.

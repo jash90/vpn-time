@@ -559,21 +559,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // A VPN connection made after inactivity ended today's workday and took
     // the VPN down means the work goes on: the end set by the inactivity is
     // dropped. While the VPN stayed up, a session the poller split at a wake
-    // is no reconnect, so nothing resumes then.
+    // is no reconnect, so nothing resumes then. In the no-VPN mode nothing
+    // reconnects, so enough activity after the stop resumes the day instead.
     private func resumeIfReconnected(active: (Date, String)?) {
         let defaults = UserDefaults.standard
 
-        guard let active,
-              defaults.bool(forKey: workdayStopDisconnectedKey),
-              let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
+        guard let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
               calendar.isDate(stopped, inSameDayAs: Date()),
-              active.0 > stopped,
               today(workdayEndManualKey) != nil,
               defaults.string(forKey: workdayEndManualSourceKey) == WorkdayEndSource.idle.rawValue else {
             return
         }
 
-        appLog("idle: workday resumed, VPN connected at \(clock.string(from: active.0))")
+        if noVPNMode {
+            guard detector.resumesWork(streaks: store.activityStreaks(), after: stopped) else {
+                return
+            }
+
+            appLog("idle: workday resumed, activity since the stop")
+        } else {
+            guard let active, defaults.bool(forKey: workdayStopDisconnectedKey), active.0 > stopped else {
+                return
+            }
+
+            appLog("idle: workday resumed, VPN connected at \(clock.string(from: active.0))")
+        }
+
         defaults.removeObject(forKey: workdayEndManualKey)
         defaults.removeObject(forKey: workdayEndManualSourceKey)
         defaults.removeObject(forKey: workdayStoppedKey)

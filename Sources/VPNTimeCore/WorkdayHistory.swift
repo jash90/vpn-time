@@ -240,28 +240,3 @@ public extension WorkdayRecord {
         return DateInterval(start: start, end: max(start, min(end ?? now, now)))
     }
 }
-
-public struct WorkdayTotals {
-    private let calendar: Calendar
-    private let now: Date
-
-    public init(calendar: Calendar = .vpnTimeISO, now: Date = Date()) {
-        self.calendar = calendar
-        self.now = now
-    }
-
-    public func total(_ bucket: Bucket, records: [WorkdayRecord]) -> Int {
-        records
-            .filter { record in
-                switch bucket {
-                case .today:
-                    return calendar.isDate(record.start, inSameDayAs: now)
-                case .week:
-                    return calendar.isDate(record.start, equalTo: now, toGranularity: .weekOfYear)
-                case .month:
-                    return calendar.isDate(record.start, equalTo: now, toGranularity: .month)
-                }
-            }
-            .reduce(0) { $0 + $1.worked(now: now, calendar: calendar) }
-    }
-}

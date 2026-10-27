@@ -10,6 +10,8 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
     private var panel: NSPanel?
     private var saveTodayDay: ((Date, Date) -> Void)?
     private var rows: [WorkdayRecord] = []
+    // Read once per reload, not for every cell.
+    private var vpnSessions: (sessions: [Session], active: (Date, String)?) = ([], nil)
 
     private let table = NSTableView()
     private let totals = NSTextField(labelWithString: "")
@@ -61,6 +63,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
 
         let selected = table.selectedRow >= 0 && table.selectedRow < rows.count ? rows[table.selectedRow].day : nil
         rows = history.records()
+        vpnSessions = sessions()
         table.reloadData()
         updateTotals()
 
@@ -71,6 +74,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
 
     private func reloadDays() {
         rows = history.records()
+        vpnSessions = sessions()
         table.reloadData()
         updateTotals()
         dayPicker.maxDate = Date()
@@ -87,7 +91,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
     // The same split as the menu's totals.
     private func updateTotals() {
         let totals = Totals(calendar: calendar, now: Date())
-        let (sessions, active) = sessions()
+        let (sessions, active) = vpnSessions
         let split = { (bucket: Bucket) in
             splitLabel(totals.split(bucket, sessions: sessions, active: active, records: self.rows))
         }
@@ -194,16 +198,18 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
                 text = record.duration.map(hoursMinutes) ?? "—"
             }
         case "vpn", "noVpn":
-            // The VPN time of the day, and the part of the workday without it.
-            let (sessions, active) = sessions()
-            let totals = Totals(calendar: calendar, now: now)
+            // The day's share of the totals' split.
+            let split = calendar.dateInterval(of: .day, for: record.start).map {
+                Totals(calendar: calendar, now: now)
+                    .split(record: record, day: $0, sessions: vpnSessions.sessions, active: vpnSessions.active)
+            }
 
             if tableColumn?.identifier.rawValue == "vpn" {
-                let day = calendar.dateInterval(of: .day, for: record.start)
-                text = day.map { hoursMinutes(totals.vpnSeconds(in: $0, sessions: sessions, active: active)) } ?? "—"
+                text = split.map { hoursMinutes($0.vpn) } ?? "—"
             } else {
-                text = record.interval(now: now, calendar: calendar)
-                    .map { hoursMinutes(totals.noVPNSeconds(in: $0, sessions: sessions, active: active)) } ?? "—"
+                // A past day without an end has no workday to split.
+                let hasWorkday = record.interval(now: now, calendar: calendar) != nil
+                text = hasWorkday ? split.map { hoursMinutes($0.noVPN) } ?? "—" : "—"
             }
         case "endSource":
             text = WorkdayForm.label(for: record.endSource)

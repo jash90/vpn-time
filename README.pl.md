@@ -116,30 +116,32 @@ samego dnia.
 Przełącznik **Tryb bez VPN (praca liczona z samej aktywności)** jest dla dni,
 w których pracujesz bez VPN-a:
 
-- dzień pracy zaczyna się od pierwszej dzisiejszej aktywności, bez dopisku
-  `(bez VPN)` i bez czekania na połączenie. Gdy VPN jest, start wyznacza się jak
-  zwykle (ciąg aktywności z pierwszym połączeniem);
+- dzień pracy zaczyna się od pierwszego ciągu aktywności trwającego co najmniej
+  **15 min**, bez dopisku `(bez VPN)` i bez czekania na połączenie. Krótki rzut
+  oka na laptopa przed pracą się nie liczy. Połączenie z VPN-em może start tylko
+  cofnąć (gdy ciąg z połączeniem zaczął się wcześniej), nigdy przesunąć na później;
 - dzień kończy pytanie o bezczynność albo reguła końca pracy, a minione dni bez
   VPN-a trafiają do historii z końcem przy ostatniej aktywności;
+- dzień zatrzymany przez bezczynność wznawia 15 min aktywności po zatrzymaniu
+  (w zwykłym trybie robi to ponowne połączenie z VPN-em);
 - apka nigdy nie rozłącza VPN-a ani nie zamyka Tunnelblicka (ani po
   bezczynności, ani regułą końca pracy).
 
-Rano przed pracą wystarczy wtedy krótki rzut oka na laptopa, żeby dzień się
-zaczął — tryb nie ma jak odróżnić go od pracy. Zmiana trybu wznawia zatrzymany
-dzień, tak jak zmiana wykrywania początku.
+Zmiana trybu wznawia zatrzymany dzień, tak jak zmiana wykrywania początku.
 
 ## Podział czasu: z VPN-em i bez
 
 Sumy w menu są rozbite na czas z VPN-em i bez:
 `Dziś: 7h 40m  (VPN 6h 10m · bez VPN 1h 30m)`, tak samo ten tydzień i miesiąc.
 
-- **VPN** — cały czas połączenia w danym okresie (także poza dniem pracy);
-- **bez VPN** — ta część dni pracy z tego okresu, w której VPN nie był
-  połączony (np. praca przed połączeniem albo po rozłączeniu);
-- pierwsza liczba to ich suma.
+- **VPN** — czas połączenia w trakcie dnia pracy. VPN zostawiony po końcu dnia
+  się nie liczy;
+- **bez VPN** — reszta dnia pracy, gdy VPN nie był połączony (np. praca przed
+  połączeniem albo po rozłączeniu);
+- pierwsza liczba to ich suma, czyli czas dni pracy z tego okresu.
 
-Bez wykrytego dnia pracy (np. przy wyłączonym wykrywaniu) zostaje sam czas na
-VPN-ie.
+W dzień bez zapisanego dnia pracy (np. przy wyłączonym wykrywaniu albo w miniony
+dzień bez końca) liczy się cały czas na VPN-ie z tego dnia.
 
 ## Okno „Dziś”
 
@@ -159,9 +161,10 @@ bezczynność), więc zatrzymany dzień znów biegnie.
 
 Pozycja **Dni pracy…** otwiera osobne okno z dniami z `~/.vpn-workdays.csv`,
 łącznie z dzisiejszym (wiersz `dziś`). Nad tabelą są sumy dziś / ten tydzień /
-ten miesiąc z tym samym podziałem co w menu, a tabela ma kolumny **VPN** (czas
-połączenia tego dnia) i **Bez VPN** (część dnia pracy bez połączenia). Dzisiejszy dzień liczy się do teraz albo do
-zatrzymania; miniony dzień bez końca liczy się jako 0. Okno jest zwykłym oknem:
+ten miesiąc z tym samym podziałem co w menu, a tabela ma kolumny **VPN** i
+**Bez VPN** z podziałem każdego dnia (razem dają kolumnę **Czas**). Dzisiejszy
+dzień liczy się do teraz albo do zatrzymania; miniony dzień bez końca liczy się
+tylko czasem na VPN-ie. Okno jest zwykłym oknem:
 zostaje na ekranie, gdy przełączasz się do innej aplikacji.
 
 Kliknięcie wiersza ładuje dzień do edycji. Data, godzina `od` i `do`, potem

@@ -121,29 +121,32 @@ The **"No-VPN mode (work is measured from activity alone)"** switch (Polish:
 "Tryb bez VPN (praca liczona z samej aktywności)") is for working without the
 VPN:
 
-- the workday starts at today's first activity, without the `(no VPN)` suffix and
-  without waiting for a connection. When there is a VPN connection, the start is
-  found as usual (the activity run with the first connection);
+- the workday starts with the first activity run of at least **15 min**, without
+  the `(no VPN)` suffix and without waiting for a connection. A short glance at
+  the laptop before work does not count. A VPN connection can only move the start
+  earlier (when the run with the connection began earlier), never later;
 - the day is ended by the inactivity question or the end rule, and past days
   without the VPN go into the history with the end at their last activity;
+- a day stopped by inactivity resumes after 15 min of activity following the
+  stop (in the normal mode, connecting the VPN again does that);
 - the app never disconnects the VPN or quits Tunnelblick (neither after
   inactivity nor by the end rule).
 
-A short glance at the laptop before work then starts the day: the mode cannot
-tell it from work. Changing the mode resumes a stopped day, like changing the
-start detection.
+Changing the mode resumes a stopped day, like changing the start detection.
 
 ## Time split: with and without the VPN
 
 The menu totals are split into time with and without the VPN:
 `Today: 7h 40m  (VPN 6h 10m · no VPN 1h 30m)`, and the same for the week and month.
 
-- **VPN**: all connected time in the period (also outside the workday);
-- **no VPN**: the part of the period's workdays when the VPN was not connected
-  (work before connecting or after disconnecting, say);
-- the first number is their sum.
+- **VPN**: the connected time during the workday. A VPN left up after the day
+  ended does not count;
+- **no VPN**: the rest of the workday, when the VPN was not connected (work
+  before connecting or after disconnecting, say);
+- the first number is their sum, i.e. the period's workday time.
 
-Without a detected workday (with detection off, say) only the VPN time remains.
+On a day without a recorded workday (with detection off, say, or a past day
+without an end) all of that day's VPN time counts.
 
 ## The "Today" window
 
@@ -164,9 +167,9 @@ from the idle prompt), so a stopped day runs again.
 The **"Work days…"** (Polish: "Dni pracy…") item opens a separate window with the
 days from `~/.vpn-workdays.csv`, including today (the `today` row). Above the
 table are the totals for today / this week / this month with the same split as
-the menu, and the table has the columns **VPN** (that day's connected time) and
-**No VPN** (the part of the workday without a connection). Today counts up to
-now or until it was stopped; a past day without an end counts as 0. The window
+the menu, and the table has the columns **VPN** and **No VPN** with each day's
+split (together they make the **Duration** column). Today counts up to now or
+until it was stopped; a past day without an end counts only its VPN time. The window
 is a regular window: it stays on screen when you switch to another app.
 
 Clicking a row loads the day for editing. Set the date, the `from` and `to`

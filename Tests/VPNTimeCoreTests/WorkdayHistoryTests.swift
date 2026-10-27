@@ -271,7 +271,16 @@ final class WorkdayHistoryTests: XCTestCase {
 
 }
 
+// Without VPN sessions the split's total is the sum of the workdays.
 final class WorkdayTotalsTests: XCTestCase {
+    private struct WorkdayTotals {
+        let now: Date
+
+        func total(_ bucket: Bucket, records: [WorkdayRecord]) -> Int {
+            Totals(now: now).split(bucket, sessions: [], active: nil, records: records).total
+        }
+    }
+
     private func date(_ string: String) -> Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
