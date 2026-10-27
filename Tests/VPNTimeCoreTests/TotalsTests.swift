@@ -193,4 +193,19 @@ final class TotalsTests: XCTestCase {
             monday.duration
         )
     }
+
+    func testOverlappingWorkdaysAfterMidnightCountTheOverlapOnce() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 12:00:00"))
+        let split = totals.split(
+            .week,
+            sessions: [Session(start: date("2026-10-26 20:00:00"), duration: 5 * 3600)],
+            active: nil,
+            records: [
+                record("2026-10-26 20:00:00", "2026-10-27 01:00:00"),
+                record("2026-10-27 00:00:00", "2026-10-27 03:00:00"),
+            ]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 5 * 3600, noVPN: 2 * 3600))
+    }
 }

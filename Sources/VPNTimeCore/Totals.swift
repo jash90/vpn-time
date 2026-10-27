@@ -34,7 +34,22 @@ public struct Totals {
             return WorkSplit(vpn: 0, noVPN: 0)
         }
 
-        let workdays = records.compactMap { $0.interval(now: now, calendar: calendar) }
+        // Each workday starts no earlier than the one before ended: one that
+        // ran past midnight may overlap the next day's, which must not count
+        // that stretch again.
+        var previousEnd: Date?
+        let workdays = records
+            .sorted { $0.start < $1.start }
+            .compactMap { record -> (start: Date, interval: DateInterval)? in
+                guard let interval = record.interval(now: now, calendar: calendar) else {
+                    return nil
+                }
+
+                let start = max(interval.start, previousEnd ?? interval.start)
+                let trimmed = DateInterval(start: start, end: max(start, interval.end))
+                previousEnd = max(previousEnd ?? trimmed.end, trimmed.end)
+                return (record.start, trimmed)
+            }
         var vpn = 0
         var noVPN = 0
         var day = bucketInterval.start
@@ -46,15 +61,14 @@ public struct Totals {
 
             let dayInterval = DateInterval(start: day, end: next)
 
-            if let record = records.first(where: { calendar.isDate($0.start, inSameDayAs: day) }) {
-                let split = self.split(record: record, day: dayInterval, sessions: sessions, active: active)
-                vpn += split.vpn
-                noVPN += split.noVPN
+            if let workday = workdays.first(where: { calendar.isDate($0.start, inSameDayAs: day) }) {
+                vpn += vpnSeconds(in: workday.interval, sessions: sessions, active: active)
+                noVPN += noVPNSeconds(in: workday.interval, sessions: sessions, active: active)
             } else {
                 // Leave out what a workday from the day before, run past
                 // midnight, already counted.
                 let covered = workdays
-                    .compactMap { dayInterval.intersection(with: $0) }
+                    .compactMap { dayInterval.intersection(with: $0.interval) }
                     .reduce(0) { $0 + vpnSeconds(in: $1, sessions: sessions, active: active) }
                 vpn += max(0, vpnSeconds(in: dayInterval, sessions: sessions, active: active) - covered)
             }
