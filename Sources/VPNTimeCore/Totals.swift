@@ -54,14 +54,15 @@ public struct Totals {
     }
 
     // One day of `split`: inside its workday when it has one, otherwise all
-    // of `day`'s VPN time.
+    // of `day`'s VPN time. A workday is clipped to its own day, so one that
+    // ran past midnight is not counted again by the next day.
     public func split(
         record: WorkdayRecord?,
         day: DateInterval,
         sessions: [Session],
         active: (Date, String)?
     ) -> WorkSplit {
-        guard let workday = record?.interval(now: now, calendar: calendar) else {
+        guard let workday = record?.interval(now: now, calendar: calendar).flatMap({ day.intersection(with: $0) }) else {
             return WorkSplit(vpn: vpnSeconds(in: day, sessions: sessions, active: active), noVPN: 0)
         }
 

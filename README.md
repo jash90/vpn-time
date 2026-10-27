@@ -127,8 +127,9 @@ VPN:
   earlier (when the run with the connection began earlier), never later;
 - the day is ended by the inactivity question or the end rule, and past days
   without the VPN go into the history with the end at their last activity;
-- a day stopped by inactivity resumes after 15 min of activity following the
-  stop (in the normal mode, connecting the VPN again does that);
+- a day stopped because the inactivity question went unanswered resumes after
+  15 min of activity following the stop (in the normal mode, connecting the VPN
+  again does that). A day ended with **"End work"** stays ended;
 - the app never disconnects the VPN or quits Tunnelblick (neither after
   inactivity nor by the end rule).
 

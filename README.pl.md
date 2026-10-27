@@ -122,8 +122,9 @@ w których pracujesz bez VPN-a:
   cofnąć (gdy ciąg z połączeniem zaczął się wcześniej), nigdy przesunąć na później;
 - dzień kończy pytanie o bezczynność albo reguła końca pracy, a minione dni bez
   VPN-a trafiają do historii z końcem przy ostatniej aktywności;
-- dzień zatrzymany przez bezczynność wznawia 15 min aktywności po zatrzymaniu
-  (w zwykłym trybie robi to ponowne połączenie z VPN-em);
+- dzień zatrzymany przez brak odpowiedzi na pytanie o bezczynność wznawia 15 min
+  aktywności po zatrzymaniu (w zwykłym trybie robi to ponowne połączenie z
+  VPN-em). Dzień zakończony przyciskiem **Zakończ pracę** zostaje zakończony;
 - apka nigdy nie rozłącza VPN-a ani nie zamyka Tunnelblicka (ani po
   bezczynności, ani regułą końca pracy).
 

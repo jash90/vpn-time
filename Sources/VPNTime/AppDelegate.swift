@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let workdayStoppedKey = "workdayStoppedAt"
     // Set once that stop actually took the VPN down.
     private let workdayStopDisconnectedKey = "workdayStopDisconnected"
+    // Set when the stop was "Zakończ pracę" rather than no answer.
+    private let workdayStopExplicitKey = "workdayStopExplicit"
     private var timer: Timer?
     private var idleTimer: Timer?
     private var idlePromptState: IdleWatch.Prompt?
@@ -476,11 +478,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 deadline: watch.deadline(of: prompt),
                 keepWorking: { [weak self] in self?.keepWorking() },
                 endNow: { [weak self] in
-                    self?.stopWorkday(at: max(idleSince, start ?? idleSince), reason: "ended from the question")
+                    self?.stopWorkday(at: max(idleSince, start ?? idleSince), reason: "ended from the question", explicit: true)
                 }
             )
         case .stop(let end):
-            stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s")
+            stopWorkday(at: end, reason: "no answer in \(Int(watch.grace))s", explicit: false)
         case .withdraw:
             appLog("idle: question withdrawn (workday over or detection off)")
             idlePromptState = nil
@@ -502,7 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // menu counter stops and the history row gets it. Unless switched off in
     // the settings the VPN goes down too, and its session ends at `end`, so
     // the inactivity is not counted as time on the VPN either.
-    private func stopWorkday(at end: Date, reason: String) {
+    private func stopWorkday(at end: Date, reason: String, explicit: Bool) {
         appLog("idle: workday stopped at \(clock.string(from: end)) (\(reason))")
         idlePromptState = nil
         idlePrompt.dismiss()
@@ -510,6 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(WorkdayEndSource.idle.rawValue, forKey: workdayEndManualSourceKey)
         UserDefaults.standard.set(Date(), forKey: workdayStoppedKey)
         UserDefaults.standard.removeObject(forKey: workdayStopDisconnectedKey)
+        UserDefaults.standard.set(explicit, forKey: workdayStopExplicitKey)
         disconnectAfterStop(at: end)
         refresh()
     }
@@ -572,7 +575,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if noVPNMode {
-            guard detector.resumesWork(streaks: store.activityStreaks(), after: stopped) else {
+            // A day ended with "Zakończ pracę" stays ended: evening activity
+            // is no sign of work the way reconnecting the VPN is.
+            guard !defaults.bool(forKey: workdayStopExplicitKey),
+                  detector.resumesWork(streaks: store.activityStreaks(), after: stopped) else {
                 return
             }
 
@@ -589,6 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.removeObject(forKey: workdayEndManualSourceKey)
         defaults.removeObject(forKey: workdayStoppedKey)
         defaults.removeObject(forKey: workdayStopDisconnectedKey)
+        defaults.removeObject(forKey: workdayStopExplicitKey)
     }
 
     // Saving the "Dziś" form: today's manual start is set (or cleared), and

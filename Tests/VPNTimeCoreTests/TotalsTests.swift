@@ -158,4 +158,17 @@ final class TotalsTests: XCTestCase {
 
         XCTAssertEqual(split, WorkSplit(vpn: 3600, noVPN: 3600 + 3600))
     }
+
+    func testAWorkdayPastMidnightIsNotCountedTwice() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-31 12:00:00"))
+        // Friday 20:00 to Saturday 02:00 on the VPN; Saturday has no workday.
+        let split = totals.split(
+            .week,
+            sessions: [Session(start: date("2026-10-30 20:00:00"), duration: 6 * 3600)],
+            active: nil,
+            records: [record("2026-10-30 20:00:00", "2026-10-31 02:00:00")]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 6 * 3600, noVPN: 0))
+    }
 }
