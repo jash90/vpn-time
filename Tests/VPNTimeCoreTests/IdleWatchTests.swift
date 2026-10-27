@@ -201,4 +201,61 @@ final class IdleWatchTests: XCTestCase {
             .none
         )
     }
+
+    func testWatchesTodaysDetectedWorkday() {
+        let calendar = Calendar.vpnTimeISO
+        let today = calendar.startOfDay(for: now).addingTimeInterval(8 * 3600)
+
+        XCTAssertEqual(
+            IdleWatch.watchedStart(
+                workdayStart: WorkdayStart(date: today, source: .vpn),
+                connectedSince: today.addingTimeInterval(-86400),
+                now: now,
+                calendar: calendar
+            ),
+            today
+        )
+    }
+
+    func testAProvisionalStartIsNotWatched() {
+        let calendar = Calendar.vpnTimeISO
+        let today = calendar.startOfDay(for: now).addingTimeInterval(60)
+
+        XCTAssertNil(IdleWatch.watchedStart(
+            workdayStart: WorkdayStart(date: today, source: .activity, provisional: true),
+            connectedSince: nil,
+            now: now,
+            calendar: calendar
+        ))
+    }
+
+    func testASessionFromAnEarlierDayIsWatchedPastMidnight() {
+        let calendar = Calendar.vpnTimeISO
+        let yesterday = calendar.startOfDay(for: now).addingTimeInterval(-3 * 3600)
+
+        XCTAssertEqual(
+            IdleWatch.watchedStart(workdayStart: nil, connectedSince: yesterday, now: now, calendar: calendar),
+            yesterday
+        )
+        XCTAssertEqual(
+            IdleWatch.watchedStart(
+                workdayStart: WorkdayStart(date: yesterday, source: .vpn),
+                connectedSince: yesterday,
+                now: now,
+                calendar: calendar
+            ),
+            yesterday
+        )
+    }
+
+    func testASessionStartedTodayAloneIsNotWatched() {
+        let calendar = Calendar.vpnTimeISO
+
+        XCTAssertNil(IdleWatch.watchedStart(
+            workdayStart: nil,
+            connectedSince: calendar.startOfDay(for: now).addingTimeInterval(60),
+            now: now,
+            calendar: calendar
+        ))
+    }
 }

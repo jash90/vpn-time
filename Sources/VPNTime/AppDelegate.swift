@@ -7,7 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         csvPath: dataPath(".vpn-sessions.csv"),
         statePath: dataPath(".vpn-sessions.state"),
         activityCSVPath: dataPath(".vpn-activity.csv"),
-        activityStatePath: dataPath(".vpn-activity.state")
+        activityStatePath: dataPath(".vpn-activity.state"),
+        stopPath: dataPath(".vpn-sessions.stop")
     )
     private let calendar = Calendar.vpnTimeISO
     private let agentLabel = "com.redge.vpntimebar"
@@ -24,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let idleThresholdKey = "idleThresholdSeconds"
     private let idleRepeatKey = "idleRepeatSeconds"
     private let idleGraceKey = "idleGraceSeconds"
+    private let idleDisconnectKey = "idleDisconnectVPN"
+    // When inactivity ended today's workday (the decision, not the end).
+    private let workdayStoppedKey = "workdayStoppedAt"
     private var timer: Timer?
     private var idleTimer: Timer?
     private var idlePromptState: IdleWatch.Prompt?
@@ -58,6 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSString(string: "~/Library/LaunchAgents/\(agentLabel).plist").expandingTildeInPath
     }
 
+    private lazy var dayClock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        return formatter
+    }()
+
     private lazy var clock: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -82,9 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refresh() {
-        let sessions = store.sessions()
-        let active = store.activeSession()
+        let (sessions, active) = currentSessions()
 
+        resumeIfReconnected(active: active)
         workdayStart = resolveStart(sessions: sessions, active: active)
         backfillHistoryIfNewDay()
         history.record(
@@ -93,15 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             day: Date()
         )
 
+        statusItem.button?.title = menuBarCounter(sessions: sessions, active: active)
+
         if let active {
             statusItem.button?.image = MenuBarIcon.connected
-            statusItem.button?.title = counter(
-                Totals(calendar: calendar, now: Date()).total(.today, sessions: sessions, active: active)
-            )
             statusItem.button?.toolTip = L("tooltip.vpnActive", active.1)
         } else {
             statusItem.button?.image = MenuBarIcon.disconnected
-            statusItem.button?.title = ""
             statusItem.button?.toolTip = L("tooltip.vpnDisconnected")
         }
 
@@ -109,6 +119,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         workdayDays.refreshIfOpen()
         endWorkdayIfDue(active: active)
         checkForUpdatesIfDue()
+    }
+
+    // The sessions as the menu should count them: one the app has already
+    // ended (inactivity) is finished, even before the tracker sees the
+    // VPN go down.
+    private func currentSessions() -> (sessions: [Session], active: (Date, String)?) {
+        StopRequest.settle(sessions: store.sessions(), active: store.activeSession(), stop: store.stopRequest())
+    }
+
+    private func currentActive() -> (Date, String)? {
+        StopRequest.settle(sessions: [], active: store.activeSession(), stop: store.stopRequest()).active
+    }
+
+    // The running workday, which stops with it; without a detected workday,
+    // today's time on the VPN while it is up.
+    private func menuBarCounter(sessions: [Session], active: (Date, String)?) -> String {
+        if let start = workdayStart, !start.provisional {
+            return stoppedAt == nil ? counter(max(0, Int(Date().timeIntervalSince(start.date)))) : ""
+        }
+
+        guard active != nil else {
+            return ""
+        }
+
+        return counter(Totals(calendar: calendar, now: Date()).total(.today, sessions: sessions, active: active))
     }
 
     private func rebuildMenu(sessions: [Session], active: (Date, String)?) {
@@ -123,7 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         if let active {
-            menu.addItem(disabled(L("menu.connected", active.1, clock.string(from: active.0))))
+            // A session from an earlier day names its date.
+            let since = calendar.isDateInToday(active.0) ? clock.string(from: active.0) : dayClock.string(from: active.0)
+            menu.addItem(disabled(L("menu.connected", active.1, since)))
         } else {
             menu.addItem(disabled(L("menu.disconnected")))
         }
@@ -164,8 +201,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             manual: manualStart,
             detectionEnabled: detectionEnabled,
             streaks: store.activityStreaks(),
-            vpnStarts: vpnStarts(sessions: sessions, active: active)
+            vpnStarts: vpnStarts(sessions: sessions, active: active),
+            carriedOver: carriedOver(sessions: sessions, active: active)
         )
+    }
+
+    // The session that began before today and ran into it, if any: the one
+    // still up, or one closed today (by inactivity, say).
+    private func carriedOver(sessions: [Session], active: (Date, String)?) -> DateInterval? {
+        let today = calendar.startOfDay(for: Date())
+
+        if let active, active.0 < today {
+            return DateInterval(start: active.0, end: max(active.0, Date()))
+        }
+
+        return sessions
+            .filter { $0.start < today && $0.start.addingTimeInterval(TimeInterval($0.duration)) > today }
+            .map { DateInterval(start: $0.start, duration: TimeInterval($0.duration)) }
+            .max { $0.end < $1.end }
+    }
+
+    private func resolveCurrentStart() -> WorkdayStart? {
+        let (sessions, active) = currentSessions()
+        return resolveStart(sessions: sessions, active: active)
     }
 
     private func backfillHistory() {
@@ -180,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // always take the activity after the disconnect into account.
             useActivityForEnd: true,
             streaks: store.activityStreaks(),
-            sessions: store.sessions(),
+            sessions: currentSessions().sessions,
             today: Date()
         )
     }
@@ -197,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A session still running from an earlier day is missing from the
         // closed sessions, so that day's end would be settled too early.
         // Retry on a later refresh, once it has been closed.
-        if let active = store.activeSession(), active.0 < today {
+        if let active = currentActive(), active.0 < today {
             return
         }
 
@@ -299,18 +357,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endDetectionEnabled: endDetectionEnabled,
             idleThreshold: watch.threshold,
             idleRepeat: watch.repeatInterval,
-            idleGrace: watch.grace
+            idleGrace: watch.grace,
+            idleDisconnect: idleDisconnectEnabled
         )
     }
 
     // What detection alone finds today, shown next to "Automatycznie".
     private func detectedStart() -> WorkdayStart? {
-        detector.resolve(
+        let (sessions, active) = currentSessions()
+        return detector.resolve(
             now: Date(),
             manual: nil,
             detectionEnabled: true,
             streaks: store.activityStreaks(),
-            vpnStarts: vpnStarts(sessions: store.sessions(), active: store.activeSession())
+            vpnStarts: vpnStarts(sessions: sessions, active: active),
+            carriedOver: carriedOver(sessions: sessions, active: active)
         )
     }
 
@@ -331,8 +392,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    private var idleDisconnectEnabled: Bool {
+        UserDefaults.standard.object(forKey: idleDisconnectKey) as? Bool ?? true
+    }
+
     // Watches a workday that is still running; the VPN no longer has to be
-    // up, so walking away after disconnecting still ends the day.
+    // up, so walking away after disconnecting still ends the day. A session
+    // still running from an earlier day is watched too.
     private func watchIdle() {
         guard let idle = IdleTime.seconds() else {
             return
@@ -342,9 +408,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let watch = idleWatch
         // The start is refreshed every 15 s, so right after midnight (or a
         // wake from sleep) it can still be yesterday's.
-        let start = workdayStart.flatMap {
-            $0.provisional || !calendar.isDate($0.date, inSameDayAs: now) ? nil : $0.date
-        }
+        let start = IdleWatch.watchedStart(
+            workdayStart: workdayStart,
+            connectedSince: carriedOverSession(),
+            now: now,
+            calendar: calendar
+        )
         let watching = endDetectionEnabled && start != nil && stoppedAt == nil
 
         // Input from before today's start (yesterday evening, before the lid
@@ -400,15 +469,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         idleAnsweredAt = Date()
     }
 
-    // Ends today at `end`: the end becomes today's manual end, so the menu
-    // counter stops and the history row gets it. The VPN stays connected.
+    // Ends the workday at `end`: the end becomes today's manual end, so the
+    // menu counter stops and the history row gets it. Unless switched off in
+    // the settings the VPN goes down too, and its session ends at `end`, so
+    // the inactivity is not counted as time on the VPN either.
     private func stopWorkday(at end: Date, reason: String) {
         appLog("idle: workday stopped at \(clock.string(from: end)) (\(reason))")
         idlePromptState = nil
         idlePrompt.dismiss()
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
         UserDefaults.standard.set(WorkdayEndSource.idle.rawValue, forKey: workdayEndManualSourceKey)
+        UserDefaults.standard.set(Date(), forKey: workdayStoppedKey)
+        disconnectAfterStop(at: end)
         refresh()
+    }
+
+    // The start of the running session, unless inactivity has already ended
+    // it once: with disconnecting off it keeps running, and must not be asked
+    // about again and again.
+    private func carriedOverSession() -> Date? {
+        guard let start = currentActive()?.0 else {
+            return nil
+        }
+
+        if let stopped = UserDefaults.standard.object(forKey: workdayStoppedKey) as? Date, stopped > start {
+            return nil
+        }
+
+        return start
+    }
+
+    private func disconnectAfterStop(at end: Date) {
+        guard idleDisconnectEnabled, let active = currentActive() else {
+            return
+        }
+
+        // Written before disconnecting: the tracker may notice the VPN going
+        // down before the disconnect call even returns.
+        let request = StopRequest(sessionStart: active.0, end: max(end, active.0))
+        store.requestStop(request)
+        appLog("idle: disconnecting the VPN, session ends at \(clock.string(from: request.end))")
+
+        quitTunnelblick(context: "idle stop") { [weak self] disconnected in
+            guard !disconnected else {
+                return
+            }
+
+            // The VPN stayed up, so later work must not be cut off at `end`.
+            self?.store.clearStopRequest()
+            self?.refresh()
+        }
+    }
+
+    // A VPN connection made after inactivity ended today's workday means the
+    // work goes on: the end set by the inactivity is dropped.
+    private func resumeIfReconnected(active: (Date, String)?) {
+        let defaults = UserDefaults.standard
+
+        guard let active,
+              let stopped = defaults.object(forKey: workdayStoppedKey) as? Date,
+              calendar.isDate(stopped, inSameDayAs: Date()),
+              active.0 > stopped,
+              today(workdayEndManualKey) != nil,
+              defaults.string(forKey: workdayEndManualSourceKey) == WorkdayEndSource.idle.rawValue else {
+            return
+        }
+
+        appLog("idle: workday resumed, VPN connected at \(clock.string(from: active.0))")
+        defaults.removeObject(forKey: workdayEndManualKey)
+        defaults.removeObject(forKey: workdayEndManualSourceKey)
+        defaults.removeObject(forKey: workdayStoppedKey)
     }
 
     // Saving the "Dziś" form: today's manual start is set (or cleared), and
@@ -426,7 +556,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.removeObject(forKey: workdayEndManualKey)
         defaults.removeObject(forKey: workdayEndManualSourceKey)
 
-        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        workdayStart = resolveCurrentStart()
         markWorkdayEndFiredIfPassed()
         refresh()
     }
@@ -450,6 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(settings.idleThreshold, forKey: idleThresholdKey)
         defaults.set(settings.idleRepeat, forKey: idleRepeatKey)
         defaults.set(settings.idleGrace, forKey: idleGraceKey)
+        defaults.set(settings.idleDisconnect, forKey: idleDisconnectKey)
 
         // The settings define the planned end again; an end typed into the
         // days table for today no longer applies.
@@ -483,7 +614,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defaults.removeObject(forKey: workdayEndLastFiredKey)
         }
 
-        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        workdayStart = resolveCurrentStart()
         markWorkdayEndFiredIfPassed()
         // An open "Dziś" window previews with the detection and end rule.
         workdayForm.updatePreviewIfOpen(detectionEnabled: detectionEnabled, endRule: workdayEndRule)
@@ -496,7 +627,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(start, forKey: workdayStartManualKey)
         UserDefaults.standard.set(end, forKey: workdayEndManualKey)
         UserDefaults.standard.set(WorkdayEndSource.manual.rawValue, forKey: workdayEndManualSourceKey)
-        workdayStart = resolveStart(sessions: store.sessions(), active: store.activeSession())
+        workdayStart = resolveCurrentStart()
         markWorkdayEndFiredIfPassed()
         // An open "Dziś" form would otherwise save its stale start over the
         // one just set, and drop today's end with it.
@@ -556,7 +687,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         UserDefaults.standard.set(Date(), forKey: workdayEndLastFiredKey)
-        quitTunnelblick()
+        quitTunnelblick(context: "workday end")
     }
 
     // Quitting Tunnelblick does NOT tear down an established tunnel: its openvpn
@@ -566,12 +697,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     //
     // The wait watches the process list rather than Tunnelblick's own scripting
     // state, which cannot be counted or iterated over from AppleScript.
-    private func quitTunnelblick() {
+    // `done` runs on the main queue with whether the tunnel went down.
+    private func quitTunnelblick(context: String, done: ((Bool) -> Void)? = nil) {
         DispatchQueue.global(qos: .utility).async {
             let disconnect = Self.runScript("tell application \"Tunnelblick\" to disconnect all")
 
             guard disconnect.isEmpty else {
-                appLog("workday end: disconnect failed: \(disconnect)")
+                appLog("\(context): disconnect failed: \(disconnect)")
+                DispatchQueue.main.async { done?(false) }
                 return
             }
 
@@ -586,10 +719,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let quit = Self.runScript("tell application \"Tunnelblick\" to quit")
 
             if quit.isEmpty {
-                appLog("workday end: disconnected in \(waited)s, still up: \(stuck), Tunnelblick closed")
+                appLog("\(context): disconnected in \(waited)s, still up: \(stuck), Tunnelblick closed")
             } else {
-                appLog("workday end: disconnected in \(waited)s, quit failed: \(quit)")
+                appLog("\(context): disconnected in \(waited)s, quit failed: \(quit)")
             }
+
+            DispatchQueue.main.async { done?(!stuck) }
         }
     }
 

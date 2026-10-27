@@ -3,7 +3,7 @@
 English | [Polski](README.pl.md)
 
 A macOS tracker for time spent on the VPN (Tunnelblick): a menu bar icon with
-today's VPN time and totals for today / this week / this month,
+the running workday's time and totals for today / this week / this month,
 plus a terminal report.
 
 It exists because Tunnelblick does not record cumulative time — the log of a
@@ -21,12 +21,15 @@ Two independent parts:
 - **Poller** (`vpn-track.sh`, launchd every 30 s) — the only source of raw data.
   It checks whether Tunnelblick's openvpn process is alive; on connect it writes
   `~/.vpn-sessions.state`, on disconnect it appends a row to
-  `~/.vpn-sessions.csv`. Along the way it records runs of activity at the
+  `~/.vpn-sessions.csv`. A run that comes more than 30 min after the previous
+  one means the Mac slept: the session is closed when the Mac went to sleep
+  and, if the VPN is still up, a new one starts at the wake. Along the way it records runs of activity at the
   computer (`~/.vpn-activity.*`). It works regardless of whether the app is
   running.
 - **View** (`VPN Time.app`) — reads those files every 15 s. It only writes the
   autostart plist and the history of workdays (`~/.vpn-workdays.csv`)
-  itself. Quitting the app does not stop data collection.
+  itself, plus `~/.vpn-sessions.stop` when inactivity ends the workday (see
+  below). Quitting the app does not stop data collection.
 
 The core logic (`VPNTimeCore`) is separated from AppKit so it can be unit
 tested; `AppDelegate` is thin and verified end-to-end.
@@ -82,6 +85,8 @@ How the app detects the start:
   began at 8:40 and the VPN at 8:45 — the start is 8:40.
 - If there has been no VPN connection yet today, the first activity run is shown
   with the suffix `(no VPN)` as a provisional start.
+- A VPN session still running from an earlier day counts as connected at
+  today's first activity, so the start is not provisional.
 - The source in parentheses: `activity` (the run began before the VPN), `VPN`
   (no earlier activity), `manual`.
 
@@ -177,8 +182,15 @@ click:
 - **"End work"** (Polish: "Zakończ pracę") or **no click within Time to answer**
   (default 5 min) — the workday ends at the moment the idleness began (no earlier
   than the start of work). The menu counter stops and the end goes into the
-  history with the source `inactivity`. The VPN stays connected. Simply returning
-  to the computer without clicking is not an answer.
+  history with the source `inactivity`. The VPN is disconnected and its session
+  ends at the same moment, so the idleness does not count as VPN time either
+  (the app writes `~/.vpn-sessions.stop`, which the poller applies once the VPN
+  is down). The **"Disconnect the VPN when inactivity ends the day"** switch
+  turns the disconnecting off. Connecting the VPN again the same day resumes the
+  workday. Simply returning to the computer without clicking is not an answer.
+
+A VPN session still running from an earlier day is watched as well, so working
+past midnight and then walking away still ends it.
 
 If the Mac was asleep (e.g. with the lid closed) for at least as long as **End
 after**, the question appears on return with the text "No keyboard or mouse
@@ -306,6 +318,8 @@ and the idle prompt; `verify-menu.sh` now checks 21 items instead of 14.
 The totals also differ from the original: only the part of a session inside
 the day / week / month counts, so a connection left open overnight is split at
 midnight (the original put a whole session into the bucket of its start), and
-the menu bar shows today's total instead of the time since the current
-connection started. `vpn-report.sh` keeps the original rule and still counts
+the menu bar shows the running workday's time (today's VPN total when no
+workday is detected) instead of the time since the current connection started.
+Inactivity that ends the workday also disconnects the VPN, and the poller
+splits a session at a sleep. `vpn-report.sh` keeps the original rule and still counts
 each finished session in the day it started.

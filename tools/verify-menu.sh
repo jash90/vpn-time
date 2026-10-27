@@ -17,6 +17,7 @@
 # 2026-10-20: 'Wykrywaj koniec pracy' toggle after 'Koniec pracy: …' — 23 entries.
 # 2026-10-20: settings moved to their own 'Ustawienia…' window; the launch-at-login
 # and both detection toggles left the menu — 21 entries.
+# 2026-10-27: a session from an earlier day shows its date: 'od 26.10 07:58'.
 set -uo pipefail
 
 read_menu() {
@@ -70,7 +71,7 @@ if [ "$(printf '%s\n' "$menu" | sed -n 1p)" = "Czas na VPN" ]; then
   check 4  '^Ten tydzień:  [0-9]+h [0-9]{2}m$'
   check 5  '^Ten miesiąc: [0-9]+h [0-9]{2}m$'
   check 6  '^SEP$'
-  check 7  '^(● Połączony \(.+\) od [0-9]{2}:[0-9]{2}|○ Rozłączony)$'
+  check 7  '^(● Połączony \(.+\) od ([0-9]{2}\.[0-9]{2} )?[0-9]{2}:[0-9]{2}|○ Rozłączony)$'
   check 8  '^(Praca od [0-9]{2}:[0-9]{2}|Praca [0-9]{2}:[0-9]{2}–[0-9]{2}:[0-9]{2}) \((ręcznie|VPN|aktywność|bez VPN|poprawiony)\) · [0-9]+h [0-9]{2}m$|^Praca: nie wykryto$'
   check 9  '^SEP$'
   check 10 '^Początek pracy: (auto|ręcznie [0-9]{2}:[0-9]{2})$'
@@ -92,7 +93,7 @@ else
   check 4  '^This week:     [0-9]+h [0-9]{2}m$'
   check 5  '^This month:  [0-9]+h [0-9]{2}m$'
   check 6  '^SEP$'
-  check 7  '^(● Connected \(.+\) since [0-9]{2}:[0-9]{2}|○ Disconnected)$'
+  check 7  '^(● Connected \(.+\) since ([0-9]{2}\.[0-9]{2} )?[0-9]{2}:[0-9]{2}|○ Disconnected)$'
   check 8  '^(Work since [0-9]{2}:[0-9]{2}|Work [0-9]{2}:[0-9]{2}–[0-9]{2}:[0-9]{2}) \((manual|VPN|activity|no VPN|edited)\) · [0-9]+h [0-9]{2}m$|^Work: not detected$'
   check 9  '^SEP$'
   check 10 '^Start of work: (auto|manual [0-9]{2}:[0-9]{2})$'
