@@ -28,10 +28,13 @@ public struct WorkdayEndPoint: Hashable {
 public struct WorkdayEndDetector {
     private let calendar: Calendar
     private let gap: TimeInterval
+    // Off in the no-VPN mode: a day without the VPN ends with its last activity.
+    private let requireVPN: Bool
 
-    public init(calendar: Calendar = .vpnTimeISO, gap: TimeInterval = 1800) {
+    public init(calendar: Calendar = .vpnTimeISO, gap: TimeInterval = 1800, requireVPN: Bool = true) {
         self.calendar = calendar
         self.gap = gap
+        self.requireVPN = requireVPN
     }
 
     // The end is the end of the day's last VPN session, extended over the
@@ -49,9 +52,9 @@ public struct WorkdayEndDetector {
             .filter { calendar.isDate($0.start, inSameDayAs: day) }
             .map { $0.start.addingTimeInterval(TimeInterval($0.duration)) }
 
-        // No VPN session that day: not a workday.
+        // No VPN session that day: not a workday, unless the VPN is not needed.
         guard let vpnEnd = sessionEnds.max() else {
-            return nil
+            return requireVPN ? nil : lastActivity(day: dayStart, streaks: streaks)
         }
 
         guard useActivity,
@@ -79,5 +82,17 @@ public struct WorkdayEndDetector {
         }
 
         return WorkdayEndPoint(date: vpnEnd, source: .vpn)
+    }
+
+    private func lastActivity(day dayStart: Date, streaks: [ActivityStreak]) -> WorkdayEndPoint? {
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+            return nil
+        }
+
+        return streaks
+            .filter { $0.start < dayEnd && $0.end >= dayStart }
+            .map { min($0.end, dayEnd) }
+            .max()
+            .map { WorkdayEndPoint(date: $0, source: .activity) }
     }
 }

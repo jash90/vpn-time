@@ -99,7 +99,8 @@ without one the menu shows `Work: not detected`.
 The **"Settings…"** item (Polish: "Ustawienia…", shortcut ⌘,) opens the window
 with the persistent settings, in sections:
 
-- **General**: **Launch at login** (Polish: "Uruchamiaj przy logowaniu");
+- **General**: **Launch at login** (Polish: "Uruchamiaj przy logowaniu") and
+  **No-VPN mode** (below);
 - **Start of work**: the **Detect start of work** switch;
 - **End of work**: `Off`, `At` or `After … from the start of work`. The
   "End of work: …" item in the menu opens this window too;
@@ -113,6 +114,36 @@ table or from the idle prompt) is cleared only when the end rule or the start
 detection changed, so a stopped day runs again then. Tuning the end detection or
 launch at login does not resume a stopped day. Saving an unchanged end rule will
 not fire it a second time on the same day.
+
+### No-VPN mode
+
+The **"No-VPN mode (work is measured from activity alone)"** switch (Polish:
+"Tryb bez VPN (praca liczona z samej aktywności)") is for working without the
+VPN:
+
+- the workday starts at today's first activity, without the `(no VPN)` suffix and
+  without waiting for a connection. When there is a VPN connection, the start is
+  found as usual (the activity run with the first connection);
+- the day is ended by the inactivity question or the end rule, and past days
+  without the VPN go into the history with the end at their last activity;
+- the app never disconnects the VPN or quits Tunnelblick (neither after
+  inactivity nor by the end rule).
+
+A short glance at the laptop before work then starts the day: the mode cannot
+tell it from work. Changing the mode resumes a stopped day, like changing the
+start detection.
+
+## Time split: with and without the VPN
+
+The menu totals are split into time with and without the VPN:
+`Today: 7h 40m  (VPN 6h 10m · no VPN 1h 30m)`, and the same for the week and month.
+
+- **VPN**: all connected time in the period (also outside the workday);
+- **no VPN**: the part of the period's workdays when the VPN was not connected
+  (work before connecting or after disconnecting, say);
+- the first number is their sum.
+
+Without a detected workday (with detection off, say) only the VPN time remains.
 
 ## The "Today" window
 
@@ -132,7 +163,9 @@ from the idle prompt), so a stopped day runs again.
 
 The **"Work days…"** (Polish: "Dni pracy…") item opens a separate window with the
 days from `~/.vpn-workdays.csv`, including today (the `today` row). Above the
-table are the totals: `Today … · this week … · this month …`. Today counts up to
+table are the totals for today / this week / this month with the same split as
+the menu, and the table has the columns **VPN** (that day's connected time) and
+**No VPN** (the part of the workday without a connection). Today counts up to
 now or until it was stopped; a past day without an end counts as 0. The window
 is a regular window: it stays on screen when you switch to another app.
 

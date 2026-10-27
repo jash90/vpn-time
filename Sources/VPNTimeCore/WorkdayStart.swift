@@ -24,10 +24,13 @@ public struct WorkdayStart: Hashable {
 public struct WorkdayStartDetector {
     private let calendar: Calendar
     private let gap: TimeInterval
+    // Off in the no-VPN mode: the day's first activity is then a real start.
+    private let requireVPN: Bool
 
-    public init(calendar: Calendar = .vpnTimeISO, gap: TimeInterval = 1800) {
+    public init(calendar: Calendar = .vpnTimeISO, gap: TimeInterval = 1800, requireVPN: Bool = true) {
         self.calendar = calendar
         self.gap = gap
+        self.requireVPN = requireVPN
     }
 
     // The start is the beginning of the activity streak that contains the day's
@@ -64,7 +67,7 @@ public struct WorkdayStartDetector {
 
         guard let firstVPN else {
             return dayStreaks.first.map {
-                WorkdayStart(date: $0.start, source: .activity, provisional: true)
+                WorkdayStart(date: $0.start, source: .activity, provisional: requireVPN)
             }
         }
 

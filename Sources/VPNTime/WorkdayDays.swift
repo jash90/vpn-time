@@ -6,6 +6,7 @@ import VPNTimeCore
 final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let calendar: Calendar
     private let history: WorkdayHistory
+    private let sessions: () -> (sessions: [Session], active: (Date, String)?)
     private var panel: NSPanel?
     private var saveTodayDay: ((Date, Date) -> Void)?
     private var rows: [WorkdayRecord] = []
@@ -25,9 +26,15 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         return formatter
     }()
 
-    init(calendar: Calendar, history: WorkdayHistory) {
+    // `sessions` supplies the VPN sessions, for the split by VPN.
+    init(
+        calendar: Calendar,
+        history: WorkdayHistory,
+        sessions: @escaping () -> (sessions: [Session], active: (Date, String)?)
+    ) {
         self.calendar = calendar
         self.history = history
+        self.sessions = sessions
     }
 
     // `saveToday` applies an edit of today's row: today's row is rebuilt from
@@ -77,14 +84,14 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         }
     }
 
+    // The same split as the menu's totals.
     private func updateTotals() {
-        let totals = WorkdayTotals(calendar: calendar, now: Date())
-        self.totals.stringValue = L(
-            "days.totals",
-            hoursMinutes(totals.total(.today, records: rows)),
-            hoursMinutes(totals.total(.week, records: rows)),
-            hoursMinutes(totals.total(.month, records: rows))
-        )
+        let totals = Totals(calendar: calendar, now: Date())
+        let (sessions, active) = sessions()
+        let split = { (bucket: Bucket) in
+            splitLabel(totals.split(bucket, sessions: sessions, active: active, records: self.rows))
+        }
+        self.totals.stringValue = L("days.totals", split(.today), split(.week), split(.month))
     }
 
     private func loadDay(_ record: WorkdayRecord) {
@@ -186,6 +193,18 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             } else {
                 text = record.duration.map(hoursMinutes) ?? "—"
             }
+        case "vpn", "noVpn":
+            // The VPN time of the day, and the part of the workday without it.
+            let (sessions, active) = sessions()
+            let totals = Totals(calendar: calendar, now: now)
+
+            if tableColumn?.identifier.rawValue == "vpn" {
+                let day = calendar.dateInterval(of: .day, for: record.start)
+                text = day.map { hoursMinutes(totals.vpnSeconds(in: $0, sessions: sessions, active: active)) } ?? "—"
+            } else {
+                text = record.interval(now: now, calendar: calendar)
+                    .map { hoursMinutes(totals.noVPNSeconds(in: $0, sessions: sessions, active: active)) } ?? "—"
+            }
         case "endSource":
             text = WorkdayForm.label(for: record.endSource)
         default:
@@ -265,6 +284,8 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
             ("start", L("days.column.start"), 65),
             ("end", L("days.column.end"), 65),
             ("length", L("days.column.length"), 70),
+            ("vpn", L("days.column.vpn"), 70),
+            ("noVpn", L("days.column.noVpn"), 70),
             ("source", L("days.column.source"), 90),
             ("endSource", L("days.column.endSource"), 115),
         ]
@@ -286,7 +307,7 @@ final class WorkdayDays: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTa
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
-        scroll.widthAnchor.constraint(equalToConstant: 570).isActive = true
+        scroll.widthAnchor.constraint(equalToConstant: 710).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: 220).isActive = true
         return scroll
     }

@@ -121,4 +121,26 @@ final class WorkdayEndDetectorTests: XCTestCase {
 
         XCTAssertEqual(end, WorkdayEndPoint(date: date("2026-10-02 10:00:00"), source: .vpn))
     }
+
+    func testWithoutRequiringTheVPNADayEndsWithItsLastActivity() {
+        let end = WorkdayEndDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            sessions: [session("2026-10-01 09:00:00", 3600)],
+            streaks: [
+                streak("2026-10-02 08:00:00", "2026-10-02 12:00:00"),
+                streak("2026-10-02 13:00:00", "2026-10-02 16:30:00"),
+                streak("2026-10-03 08:00:00", "2026-10-03 09:00:00"),
+            ]
+        )
+
+        XCTAssertEqual(end, WorkdayEndPoint(date: date("2026-10-02 16:30:00"), source: .activity))
+    }
+
+    func testADayWithoutVPNOrActivityHasNoEnd() {
+        XCTAssertNil(WorkdayEndDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            sessions: [],
+            streaks: []
+        ))
+    }
 }

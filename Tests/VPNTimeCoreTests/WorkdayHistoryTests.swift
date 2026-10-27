@@ -246,6 +246,29 @@ final class WorkdayHistoryTests: XCTestCase {
 
         """)
     }
+
+    func testBackfillWithoutRequiringTheVPNRecordsDaysWithActivityOnly() {
+        let history = WorkdayHistory(path: path)
+
+        history.backfill(
+            detector: WorkdayStartDetector(requireVPN: false),
+            endDetector: WorkdayEndDetector(requireVPN: false),
+            useActivityForEnd: true,
+            streaks: [
+                ActivityStreak(start: date("2026-10-01 08:30:00"), end: date("2026-10-01 12:00:00")),
+                ActivityStreak(start: date("2026-10-01 13:00:00"), end: date("2026-10-01 16:00:00")),
+            ],
+            sessions: [],
+            today: date("2026-10-02 12:00:00")
+        )
+
+        XCTAssertEqual(contents(), """
+        date,start_iso,end_iso,source,end_source
+        2026-10-01,2026-10-01 08:30:00,2026-10-01 16:00:00,activity,activity
+
+        """)
+    }
+
 }
 
 final class WorkdayTotalsTests: XCTestCase {

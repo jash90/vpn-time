@@ -73,4 +73,74 @@ final class TotalsTests: XCTestCase {
 
         XCTAssertEqual(totals.total(.week, sessions: sessions, active: nil), 600)
     }
+
+    private func record(_ start: String, _ end: String?) -> WorkdayRecord {
+        WorkdayRecord(day: String(start.prefix(10)), start: date(start), end: end.map(date), source: .activity)
+    }
+
+    func testSplitSeparatesTheWorkdayWithoutTheVPN() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 18:00:00"))
+        let split = totals.split(
+            .today,
+            sessions: [Session(start: date("2026-10-27 09:00:00"), duration: 4 * 3600)],
+            active: nil,
+            records: [record("2026-10-27 08:00:00", "2026-10-27 16:00:00")]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 4 * 3600, noVPN: 4 * 3600))
+        XCTAssertEqual(split.total, 8 * 3600)
+    }
+
+    func testSplitCountsTodaysRunningDayUpToNow() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 12:00:00"))
+        let split = totals.split(
+            .today,
+            sessions: [],
+            active: (date("2026-10-27 10:00:00"), "Office_VPN"),
+            records: [record("2026-10-27 08:00:00", nil)]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 2 * 3600, noVPN: 2 * 3600))
+    }
+
+    func testVPNOutsideTheWorkdayStillCounts() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 23:00:00"))
+        let split = totals.split(
+            .today,
+            sessions: [Session(start: date("2026-10-27 20:00:00"), duration: 3600)],
+            active: nil,
+            records: [record("2026-10-27 08:00:00", "2026-10-27 16:00:00")]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 3600, noVPN: 8 * 3600))
+    }
+
+    func testSplitWithoutAWorkdayIsTheVPNTime() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 18:00:00"))
+        let split = totals.split(
+            .today,
+            sessions: [Session(start: date("2026-10-27 09:00:00"), duration: 3600)],
+            active: nil,
+            records: []
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 3600, noVPN: 0))
+    }
+
+    func testWeekSplitSumsTheWeeksWorkdays() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-28 12:00:00"))
+        let split = totals.split(
+            .week,
+            sessions: [Session(start: date("2026-10-26 09:00:00"), duration: 3600)],
+            active: nil,
+            records: [
+                record("2026-10-26 08:00:00", "2026-10-26 10:00:00"),
+                record("2026-10-27 08:00:00", "2026-10-27 09:00:00"),
+                record("2026-10-25 08:00:00", "2026-10-25 18:00:00"),
+                record("2026-10-24 08:00:00", nil),
+            ]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 3600, noVPN: 2 * 3600))
+    }
 }

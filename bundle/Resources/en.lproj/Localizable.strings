@@ -9,6 +9,7 @@
 "menu.today" = "Today:           %@";
 "menu.thisWeek" = "This week:     %@";
 "menu.thisMonth" = "This month:  %@";
+"split" = "%1$@  (VPN %2$@ · no VPN %3$@)";
 "menu.connected" = "● Connected (%1$@) since %2$@";
 "menu.disconnected" = "○ Disconnected";
 "menu.worked.none" = "Work: not detected";
@@ -107,12 +108,13 @@
 "settings.title" = "Settings";
 "settings.generalCaption" = "General";
 "settings.startCaption" = "Start of work";
+"settings.noVPNMode" = "No-VPN mode (work is measured from activity alone)";
 "settings.idleDisconnect" = "Disconnect the VPN when inactivity ends the day";
 "settings.hint" = "Quitting Tunnelblick works while the VPN is up, once a day. After the set time without activity the app asks whether work is over; no answer ends the day when the inactivity began, and the VPN session ends then too. Connecting the VPN again after that resumes the day.";
 
 /* Work days window */
 "days.title" = "Work days";
-"days.totals" = "Today %1$@  ·  this week %2$@  ·  this month %3$@";
+"days.totals" = "Today: %1$@\nThis week: %2$@\nThis month: %3$@";
 "days.empty" = "No saved days — pick a date to add a day.";
 "days.endUnknown" = "End unknown — set it and save.";
 "days.newDay" = "New day — save to add it.";
@@ -131,6 +133,8 @@
 "days.column.start" = "Start";
 "days.column.end" = "End";
 "days.column.length" = "Duration";
+"days.column.vpn" = "VPN";
+"days.column.noVpn" = "No VPN";
 "days.column.source" = "Source";
 "days.column.endSource" = "End from";
 

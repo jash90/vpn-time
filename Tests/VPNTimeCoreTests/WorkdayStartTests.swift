@@ -166,4 +166,27 @@ final class WorkdayStartTests: XCTestCase {
             .manual
         )
     }
+
+    func testWithoutRequiringTheVPNTheFirstActivityStartsTheDay() {
+        let start = WorkdayStartDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            streaks: [streak("2026-10-02 09:30:00", "2026-10-02 10:00:00")],
+            vpnStarts: []
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 09:30:00"), source: .activity))
+    }
+
+    func testWithoutRequiringTheVPNAConnectionStillPlacesTheStart() {
+        let start = WorkdayStartDetector(calendar: calendar, requireVPN: false).detect(
+            day: date("2026-10-02 12:00:00"),
+            streaks: [
+                streak("2026-10-02 07:00:00", "2026-10-02 07:05:00"),
+                streak("2026-10-02 08:40:00", "2026-10-02 12:00:00"),
+            ],
+            vpnStarts: [date("2026-10-02 08:45:00")]
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 08:40:00"), source: .activity))
+    }
 }

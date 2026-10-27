@@ -9,6 +9,7 @@
 "menu.today" = "Dziś:            %@";
 "menu.thisWeek" = "Ten tydzień:  %@";
 "menu.thisMonth" = "Ten miesiąc: %@";
+"split" = "%1$@  (VPN %2$@ · bez VPN %3$@)";
 "menu.connected" = "● Połączony (%1$@) od %2$@";
 "menu.disconnected" = "○ Rozłączony";
 "menu.worked.none" = "Praca: nie wykryto";
@@ -107,12 +108,13 @@
 "settings.title" = "Ustawienia";
 "settings.generalCaption" = "Ogólne";
 "settings.startCaption" = "Początek pracy";
+"settings.noVPNMode" = "Tryb bez VPN (praca liczona z samej aktywności)";
 "settings.idleDisconnect" = "Rozłączaj VPN, gdy bezczynność kończy dzień";
 "settings.hint" = "Zamknięcie Tunnelblicka działa przy aktywnym VPN-ie, raz dziennie. Bez aktywności przez ustawiony czas apka pyta, czy to już koniec; brak odpowiedzi kończy dzień w chwili, gdy zaczęła się bezczynność, i wtedy też kończy się sesja VPN. Ponowne połączenie z VPN-em po takim rozłączeniu wznawia dzień.";
 
 /* Work days window */
 "days.title" = "Dni pracy";
-"days.totals" = "Dziś %1$@  ·  ten tydzień %2$@  ·  ten miesiąc %3$@";
+"days.totals" = "Dziś: %1$@\nTen tydzień: %2$@\nTen miesiąc: %3$@";
 "days.empty" = "Brak zapisanych dni — wybierz datę, żeby dodać dzień.";
 "days.endUnknown" = "Koniec nieznany — ustaw go i zapisz.";
 "days.newDay" = "Nowy dzień — zapisz, żeby go dodać.";
@@ -131,6 +133,8 @@
 "days.column.start" = "Początek";
 "days.column.end" = "Koniec";
 "days.column.length" = "Czas";
+"days.column.vpn" = "VPN";
+"days.column.noVpn" = "Bez VPN";
 "days.column.source" = "Źródło";
 "days.column.endSource" = "Koniec z";
 

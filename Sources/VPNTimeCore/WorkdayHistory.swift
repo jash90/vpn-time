@@ -228,12 +228,16 @@ public extension WorkdayRecord {
     // Time worked as of `now`: a day still in progress (no end yet, or an end
     // still ahead) counts up to now; a past day without an end counts as 0.
     func worked(now: Date, calendar: Calendar) -> Int {
+        interval(now: now, calendar: calendar).map { Int($0.duration) } ?? 0
+    }
+
+    // The span `worked` counts; nil for a past day without an end.
+    func interval(now: Date, calendar: Calendar) -> DateInterval? {
         guard calendar.isDate(start, inSameDayAs: now) else {
-            return duration ?? 0
+            return end.map { DateInterval(start: start, end: max(start, $0)) }
         }
 
-        let until = min(end ?? now, now)
-        return max(0, Int(until.timeIntervalSince(start)))
+        return DateInterval(start: start, end: max(start, min(end ?? now, now)))
     }
 }
 
