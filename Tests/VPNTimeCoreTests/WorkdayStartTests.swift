@@ -50,6 +50,53 @@ final class WorkdayStartTests: XCTestCase {
         XCTAssertEqual(start, WorkdayStart(date: date("2026-10-02 09:00:00"), source: .vpn))
     }
 
+    func testASessionFromYesterdayStartsTheDayAtTheFirstActivity() {
+        let start = detector.detect(
+            day: date("2026-10-27 10:16:00"),
+            streaks: [
+                streak("2026-10-26 15:55:00", "2026-10-26 18:55:00"),
+                streak("2026-10-27 08:05:00", "2026-10-27 10:16:00"),
+            ],
+            vpnStarts: [date("2026-10-26 07:58:00")],
+            carriedOver: DateInterval(start: date("2026-10-26 07:58:00"), end: date("2026-10-27 10:16:00"))
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-27 08:05:00"), source: .vpn))
+    }
+
+    func testASessionThatEndedBeforeTheFirstActivityIsNotCarriedOver() {
+        let start = detector.detect(
+            day: date("2026-10-27 10:16:00"),
+            streaks: [streak("2026-10-27 08:05:00", "2026-10-27 10:16:00")],
+            vpnStarts: [date("2026-10-26 07:58:00")],
+            carriedOver: DateInterval(start: date("2026-10-26 07:58:00"), end: date("2026-10-27 00:30:00"))
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-27 08:05:00"), source: .activity, provisional: true))
+    }
+
+    func testASessionFromYesterdayWithoutActivityTodayFindsNothing() {
+        let start = detector.detect(
+            day: date("2026-10-27 06:00:00"),
+            streaks: [streak("2026-10-26 15:55:00", "2026-10-26 18:55:00")],
+            vpnStarts: [date("2026-10-26 07:58:00")],
+            carriedOver: DateInterval(start: date("2026-10-26 07:58:00"), end: date("2026-10-27 06:00:00"))
+        )
+
+        XCTAssertNil(start)
+    }
+
+    func testASessionStartedTodayIsNotTreatedAsCarriedOver() {
+        let start = detector.detect(
+            day: date("2026-10-27 12:00:00"),
+            streaks: [streak("2026-10-27 07:00:00", "2026-10-27 07:05:00")],
+            vpnStarts: [date("2026-10-27 09:00:00")],
+            carriedOver: DateInterval(start: date("2026-10-27 09:00:00"), end: date("2026-10-27 12:00:00"))
+        )
+
+        XCTAssertEqual(start, WorkdayStart(date: date("2026-10-27 09:00:00"), source: .vpn))
+    }
+
     func testNoVPNYieldsAProvisionalStart() {
         let start = detector.detect(
             day: date("2026-10-02 12:00:00"),

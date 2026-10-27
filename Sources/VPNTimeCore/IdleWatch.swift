@@ -95,6 +95,27 @@ public struct IdleWatch {
         return .ask(idleSince: max(idleSince, answeredAt ?? idleSince))
     }
 
+    // The start of the workday to watch: today's, once it is more than a
+    // first touch of the laptop, otherwise that of a VPN session still
+    // running from an earlier day. Past midnight that session still has to
+    // end when its user walks away.
+    public static func watchedStart(
+        workdayStart: WorkdayStart?,
+        connectedSince: Date?,
+        now: Date,
+        calendar: Calendar
+    ) -> Date? {
+        if let workdayStart, !workdayStart.provisional, calendar.isDate(workdayStart.date, inSameDayAs: now) {
+            return workdayStart.date
+        }
+
+        if let connectedSince, connectedSince < calendar.startOfDay(for: now) {
+            return connectedSince
+        }
+
+        return nil
+    }
+
     public func deadline(of prompt: Prompt) -> Date {
         prompt.shownAt.addingTimeInterval(grace)
     }

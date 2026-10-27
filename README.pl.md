@@ -3,7 +3,7 @@
 [English](README.md) | Polski
 
 Tracker czasu spędzonego na VPN-ie (Tunnelblick) dla macOS: ikona w pasku menu
-z dzisiejszym czasem na VPN-ie i sumami dziś / ten tydzień / ten miesiąc, plus
+z czasem bieżącego dnia pracy i sumami dziś / ten tydzień / ten miesiąc, plus
 raport w terminalu.
 
 Powstał, bo Tunnelblick nie zapisuje sumarycznego czasu — log pojedynczego
@@ -21,10 +21,13 @@ Dwa niezależne byty:
 - **Poller** (`vpn-track.sh`, launchd co 30 s) — jedyne źródło surowych danych.
   Sprawdza, czy żyje proces openvpn Tunnelblicka; przy połączeniu zapisuje
   `~/.vpn-sessions.state`, przy rozłączeniu dopisuje wiersz do
-  `~/.vpn-sessions.csv`. Przy okazji notuje ciągi aktywności przy komputerze
+  `~/.vpn-sessions.csv`. Uruchomienie ponad 30 min po poprzednim oznacza, że
+  Mac spał: sesja kończy się w chwili uśpienia, a jeśli VPN nadal działa, nowa
+  zaczyna się przy wybudzeniu. Przy okazji notuje ciągi aktywności przy komputerze
   (`~/.vpn-activity.*`). Działa niezależnie od tego, czy apka jest uruchomiona.
 - **Widok** (`VPN Time.app`) — czyta te pliki co 15 s. Sam zapisuje tylko plist
-  autostartu i historię dni pracy (`~/.vpn-workdays.csv`). Zamknięcie apki
+  autostartu, historię dni pracy (`~/.vpn-workdays.csv`) i
+  `~/.vpn-sessions.stop`, gdy bezczynność kończy dzień (niżej). Zamknięcie apki
   nie przerywa zbierania danych.
 
 Rdzeń logiki (`VPNTimeCore`) jest oddzielony od AppKit, żeby dał się testować
@@ -79,6 +82,8 @@ Jak apka wykrywa start:
   praca ruszyła o 8:40, a VPN o 8:45 — start to 8:40.
 - Gdy dziś nie było jeszcze VPN-a, pokazany jest pierwszy ciąg aktywności z
   dopiskiem `(bez VPN)`, jako start wstępny.
+- Sesja VPN trwająca od wcześniejszego dnia liczy się jako połączenie w chwili
+  pierwszej dzisiejszej aktywności, więc start nie jest wstępny.
 - Źródło w nawiasie: `aktywność` (ciąg zaczął się przed VPN-em), `VPN` (brak
   wcześniejszej aktywności), `ręcznie`.
 
@@ -168,8 +173,16 @@ oknami na każdym biurku, ale nie zabiera fokusu, więc odpowiada się kliknięc
 - **Zakończ pracę** albo brak kliknięcia przez **Czas na odpowiedź** (domyślnie
   5 min) — dzień pracy kończy się w chwili, gdy zaczęła się bezczynność
   (najwcześniej na początku pracy). Licznik w menu staje, koniec trafia do
-  historii ze źródłem `bezczynność`. VPN zostaje połączony. Sam powrót do
-  komputera bez kliknięcia nie jest odpowiedzią.
+  historii ze źródłem `bezczynność`. VPN zostaje rozłączony, a jego sesja kończy
+  się w tej samej chwili, więc bezczynność nie liczy się też jako czas na VPN-ie
+  (apka zapisuje `~/.vpn-sessions.stop`, który poller stosuje po rozłączeniu).
+  Rozłączanie wyłącza przełącznik **Rozłączaj VPN, gdy bezczynność kończy
+  dzień**. Ponowne połączenie z VPN-em tego samego dnia, po rozłączeniu go przez apkę,
+  wznawia dzień pracy. Sam
+  powrót do komputera bez kliknięcia nie jest odpowiedzią.
+
+Pilnowana jest też sesja VPN trwająca od wcześniejszego dnia, więc praca po
+północy i odejście od komputera też ją kończą.
 
 Gdy Mac był uśpiony (np. z zamkniętą klapą) co najmniej tyle, ile **Koniec po**,
 pytanie pojawia się po powrocie z tekstem „Od 12:10 do 14:40 nie było aktywności
@@ -289,6 +302,11 @@ bezczynność; `verify-menu.sh` sprawdza teraz 21 pozycji zamiast 14.
 Inaczej niż w oryginale liczone są też sumy: liczy się tylko ta część sesji,
 która mieści się w danym dniu / tygodniu / miesiącu, więc połączenie zostawione
 na noc dzieli się o północy (oryginał wrzucał całą sesję do kubełka jej
-startu), a pasek menu pokazuje dzisiejszą sumę zamiast czasu od początku
-bieżącego połączenia. `vpn-report.sh` zostaje przy regule oryginału i nadal
+startu), a pasek menu pokazuje czas bieżącego dnia pracy (dzisiejszą sumę na VPN-ie,
+gdy dnia pracy nie wykryto) zamiast czasu od początku bieżącego połączenia.
+Staje, gdy dzień pracy się kończy (bezczynność, koniec ustawiony ręcznie albo
+zaplanowany koniec, gdy minie); przy wyłączonym wykrywaniu końca staje też z
+rozłączeniem VPN-u.
+Bezczynność, która kończy dzień pracy, rozłącza też VPN, a poller dzieli sesję
+przy uśpieniu Maca. `vpn-report.sh` zostaje przy regule oryginału i nadal
 liczy każdą zakończoną sesję do dnia, w którym się zaczęła.

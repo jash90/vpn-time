@@ -5,6 +5,7 @@ public final class VPNStore {
     private let statePath: String
     private let activityCSVPath: String
     private let activityStatePath: String
+    private let stopPath: String
 
     private let parser: DateFormatter = {
         let formatter = DateFormatter()
@@ -18,12 +19,44 @@ public final class VPNStore {
         csvPath: String = NSString(string: "~/.vpn-sessions.csv").expandingTildeInPath,
         statePath: String = NSString(string: "~/.vpn-sessions.state").expandingTildeInPath,
         activityCSVPath: String = NSString(string: "~/.vpn-activity.csv").expandingTildeInPath,
-        activityStatePath: String = NSString(string: "~/.vpn-activity.state").expandingTildeInPath
+        activityStatePath: String = NSString(string: "~/.vpn-activity.state").expandingTildeInPath,
+        stopPath: String = NSString(string: "~/.vpn-sessions.stop").expandingTildeInPath
     ) {
         self.csvPath = csvPath
         self.statePath = statePath
         self.activityCSVPath = activityCSVPath
         self.activityStatePath = activityStatePath
+        self.stopPath = stopPath
+    }
+
+    // The end the app asked for when inactivity ended the workday. The tracker
+    // applies it to the session once the VPN is down and removes the file.
+    public func stopRequest() -> StopRequest? {
+        guard let raw = try? String(contentsOfFile: stopPath, encoding: .utf8) else {
+            return nil
+        }
+
+        let fields = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\t")
+
+        guard fields.count >= 2, let start = TimeInterval(fields[0]), let end = TimeInterval(fields[1]) else {
+            return nil
+        }
+
+        return StopRequest(
+            sessionStart: Date(timeIntervalSince1970: start),
+            end: Date(timeIntervalSince1970: end)
+        )
+    }
+
+    public func requestStop(_ request: StopRequest) {
+        let line = "\(Int(request.sessionStart.timeIntervalSince1970))\t\(Int(request.end.timeIntervalSince1970))\n"
+        try? line.write(toFile: stopPath, atomically: true, encoding: .utf8)
+    }
+
+    public func clearStopRequest() {
+        try? FileManager.default.removeItem(atPath: stopPath)
     }
 
     public func sessions() -> [Session] {

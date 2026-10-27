@@ -33,7 +33,15 @@ public struct WorkdayStartDetector {
     // The start is the beginning of the activity streak that contains the day's
     // first VPN connection, so touching the laptop early in the morning does
     // not count unless the work carried on from there without a long break.
-    public func detect(day: Date, streaks: [ActivityStreak], vpnStarts: [Date]) -> WorkdayStart? {
+    // `carriedOver` is a session that began on an earlier day and ran into
+    // this one: when it was still up at the day's first activity, that
+    // activity is when the VPN was there for the day.
+    public func detect(
+        day: Date,
+        streaks: [ActivityStreak],
+        vpnStarts: [Date],
+        carriedOver: DateInterval? = nil
+    ) -> WorkdayStart? {
         let dayStart = calendar.startOfDay(for: day)
 
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
@@ -45,9 +53,14 @@ public struct WorkdayStartDetector {
             .map { ActivityStreak(start: max($0.start, dayStart), end: $0.end) }
             .sorted { $0.start < $1.start }
 
-        let firstVPN = vpnStarts
-            .filter { $0 >= dayStart && $0 < dayEnd }
-            .min()
+        var dayVPNStarts = vpnStarts.filter { $0 >= dayStart && $0 < dayEnd }
+
+        if let carriedOver, carriedOver.start < dayStart,
+           let first = dayStreaks.first, first.start <= carriedOver.end {
+            dayVPNStarts.append(first.start)
+        }
+
+        let firstVPN = dayVPNStarts.min()
 
         guard let firstVPN else {
             return dayStreaks.first.map {
@@ -73,7 +86,8 @@ public struct WorkdayStartDetector {
         manual: Date?,
         detectionEnabled: Bool,
         streaks: [ActivityStreak],
-        vpnStarts: [Date]
+        vpnStarts: [Date],
+        carriedOver: DateInterval? = nil
     ) -> WorkdayStart? {
         if let manual, calendar.isDate(manual, inSameDayAs: now) {
             return WorkdayStart(date: manual, source: .manual)
@@ -83,6 +97,6 @@ public struct WorkdayStartDetector {
             return nil
         }
 
-        return detect(day: now, streaks: streaks, vpnStarts: vpnStarts)
+        return detect(day: now, streaks: streaks, vpnStarts: vpnStarts, carriedOver: carriedOver)
     }
 }
