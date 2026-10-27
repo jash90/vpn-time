@@ -171,4 +171,26 @@ final class TotalsTests: XCTestCase {
 
         XCTAssertEqual(split, WorkSplit(vpn: 6 * 3600, noVPN: 0))
     }
+
+    func testAWorkdayPastMidnightKeepsItsTimeWhenTheNextDayHasOne() {
+        let totals = Totals(calendar: calendar, now: date("2026-10-27 12:00:00"))
+        let monday = record("2026-10-26 20:00:00", "2026-10-27 01:00:00")
+        let split = totals.split(
+            .week,
+            sessions: [Session(start: date("2026-10-26 20:00:00"), duration: 5 * 3600)],
+            active: nil,
+            records: [monday, record("2026-10-27 09:00:00", "2026-10-27 12:00:00")]
+        )
+
+        XCTAssertEqual(split, WorkSplit(vpn: 5 * 3600, noVPN: 3 * 3600))
+        XCTAssertEqual(
+            totals.split(
+                record: monday,
+                day: DateInterval(start: date("2026-10-26 00:00:00"), end: date("2026-10-27 00:00:00")),
+                sessions: [Session(start: date("2026-10-26 20:00:00"), duration: 5 * 3600)],
+                active: nil
+            ).total,
+            monday.duration
+        )
+    }
 }
